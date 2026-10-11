@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Главная</title>
+    <link rel="stylesheet" th:href="@{/css/styles.css}">
+    <link rel="stylesheet" th:href="@{/css/main.css}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<div class="app-shell">
+    <header class="topbar">
+        <div class="topbar-left">
+            <div class="brand"><div class="brand-mark">Д</div></div>
+            <button class="button button--primary" onclick="window.location.href='/documents/create'">+ Создать</button>
+            <button class="button button--secondary" onclick="showDashboard()">Исполнительская дисциплина</button>
+        </div>
+        <div class="topbar-center">
+            <input class="topbar-search" id="globalSearch" placeholder="Глобальный поиск по всей программе..." onkeypress="handleGlobalSearch(event)">
+        </div>
+        <div class="topbar-right">
+            <button class="button button--secondary" onclick="toggleViewSidebar()">Вид</button>
+            <div class="profile-copy">
+                <strong id="userName">Загрузка...</strong>
+                <span id="userRole"></span>
+            </div>
+            <button class="button button--secondary" onclick="logout()">Выйти</button>
+        </div>
+    </header>
+
+    <div class="view-sidebar" id="viewSidebar">
+        <h3>Настройки таблицы</h3>
+        <div>
+            <label>Количество строк:</label>
+            <input type="number" id="pageSizeInput" value="50" min="5" max="200" onchange="updatePageSize()" class="topbar-search" style="width:100%;">
+        </div>
+        <div id="columnToggles" style="margin-top:16px;"></div>
+    </div>
+
+    <aside class="sidebar" id="sidebar"></aside>
+
+    <main class="content">
+        <div th:replace="~{fragments/standard-view :: standardView}"></div>
+        <div th:replace="~{fragments/dashboard :: dashboard}"></div>
+        <div th:replace="~{fragments/document-view :: documentView}"></div>
+    </main>
+</div>
+
+<!-- Модалки и popover -->
+<div th:replace="~{fragments/modals :: modals}"></div>
+
+<script th:src="@{/js/core.js}"></script>
+<script th:src="@{/js/table.js}"></script>
+<script th:src="@{/js/admin.js}"></script>
+<script th:src="@{/js/documents.js}"></script>
+<script th:src="@{/js/dashboard.js}"></script>
+</body>
+</html>

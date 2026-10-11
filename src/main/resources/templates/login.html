@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Вход в систему</title>
+    <link rel="stylesheet" th:href="@{/css/styles.css}">
+</head>
+<body>
+
+<main class="login-page" id="loginSection">
+    <div class="login-card">
+        <div class="login-heading">
+            <h1>Вход в систему</h1>
+        </div>
+        <div class="form-row">
+            <input type="text" id="tabNumber" placeholder="Табельный номер" autocomplete="username">
+        </div>
+        <div class="form-row">
+            <input type="password" id="password" placeholder="Пароль" autocomplete="current-password">
+        </div>
+        <div class="form-error" id="errorMsg" style="display:none;"></div>
+        <div class="login-btn-wrapper">
+            <button class="button button--primary" onclick="doLogin()">Войти</button>
+        </div>
+    </div>
+</main>
+
+<div class="modal-overlay" id="changePasswordModal">
+    <div class="modal-content">
+        <h2 style="font-size: 20px; margin-bottom: 16px;">Смена пароля</h2>
+        <p class="muted" id="changeReasonText" style="margin-bottom: 24px;">Необходимо сменить пароль.</p>
+        <div class="form-row">
+            <input type="password" id="newPassword" placeholder="Новый пароль (мин. 8 символов)">
+        </div>
+        <div class="form-row">
+            <input type="password" id="confirmPassword" placeholder="Повторите новый пароль">
+        </div>
+        <div class="form-error" id="changeError" style="display:none;"></div>
+        <div class="login-btn-wrapper" style="margin-top: 16px;">
+            <button class="button button--primary" onclick="submitPasswordChange()" style="width: 100%;">Сохранить пароль</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let tempToken = null;
+    let pendingUserData = null;
+
+    async function doLogin() {
+        const tabNumber = document.getElementById('tabNumber').value.trim();
+        const password = document.getElementById('password').value;
+        const errorMsg = document.getElementById('errorMsg');
+        errorMsg.style.display = 'none';
+
+        if (!tabNumber || !password) {
+            errorMsg.textContent = 'Заполните все поля';
+            errorMsg.style.display = 'block';
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tabNumber, password })
+            });
+            const data = await response.json();
+
+            if (!response.ok) {
+                errorMsg.textContent = data.error || 'Неверный табельный номер или пароль';
+                errorMsg.style.display = 'block';
+                return;
+            }
+
+            // BR-01 / BR-02: принудительная смена пароля
+            if (data.requirePasswordChange) {
+                tempToken = data.token;
+                pendingUserData = data;
+                document.getElementById('loginSection').style.display = 'none';
+                document.getElementById('changePasswordModal').style.display = 'flex';
+                document.getElementById('changeReasonText').textContent =
+                    data.passwordChangeReason === 'TEMPORARY_PASSWORD'
+                        ? 'При первом входе необходимо установить постоянный пароль.'
+                        : 'Срок действия пароля истек (более 30 дней). Установите новый пароль.';
+                return;
+            }
+
+            saveAuthAndRedirect(data);
+
+        } catch (e) {
+            errorMsg.textContent = 'Ошибка соединения с сервером';
+            errorMsg.style.display = 'block';
+        }
+    }
+
+    async function submitPasswordChange() {
+        const newPass = document.getElementById('newPassword').value;
+        const confirmPass = document.getElementById('confirmPassword').value;
+        const errorMsg = document.getElementById('changeError');
+        errorMsg.style.display = 'none';
+
+        if (newPass.length < 8) {
+            errorMsg.textContent = 'Пароль должен быть не менее 8 символов';
+            errorMsg.style.display = 'block';
+            return;
+        }
+        if (newPass !== confirmPass) {
+            errorMsg.textContent = 'Пароли не совпадают';
+            errorMsg.style.display = 'block';
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/auth/change-password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + tempToken
+                },
+                body: JSON.stringify({
+                    oldPassword: document.getElementById('password').value,
+                    newPassword: newPass
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                alert('Пароль успешно изменён!');
+                // Берём НОВЫЙ токен из ответа сервера (старый мог быть
+                // сгенерирован до смены пароля и уже неактуален)
+                pendingUserData.token = data.token;
+                saveAuthAndRedirect(pendingUserData);
+            } else {
+                const data = await response.json().catch(() => ({}));
+                errorMsg.textContent = data.error || 'Ошибка при смене пароля';
+                errorMsg.style.display = 'block';
+            }
+        } catch (e) {
+            errorMsg.textContent = 'Ошибка соединения';
+            errorMsg.style.display = 'block';
+        }
+    }
+
+    function saveAuthAndRedirect(data) {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('userId', data.userId);
+        localStorage.setItem('fullName', data.fullName);
+        localStorage.setItem('roleCode', (data.roleCode || 'EMPLOYEE').toUpperCase());
+        localStorage.setItem('role', data.roleName || data.roleCode);
+        window.location.href = '/main';
+    }
+
+    document.addEventListener('keypress', e => {
+        if (e.key === 'Enter') doLogin();
+    });
+</script>
+</body>
+</html>

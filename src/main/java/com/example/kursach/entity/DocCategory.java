@@ -1,0 +1,46 @@
+package com.example.kursach.entity;
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(
+        name = "doc_categories",
+        uniqueConstraints = {
+                @UniqueConstraint(columnNames = {"document_type_id", "code"}),
+                @UniqueConstraint(columnNames = {"category_id", "document_type_id"})
+        }
+)
+public class DocCategory {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "category_id")
+    private Long categoryId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "document_type_id", nullable = false)
+    private DocType documentType;
+
+    @Column(name = "code", nullable = false, length = 50)
+    private String code;
+
+    @Column(name = "name", nullable = false, length = 150)
+    private String name;
+
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = true;
+
+    public Long getCategoryId() { return categoryId; }
+    public void setCategoryId(Long categoryId) { this.categoryId = categoryId; }
+
+    public DocType getDocumentType() { return documentType; }
+    public void setDocumentType(DocType documentType) { this.documentType = documentType; }
+
+    public String getCode() { return code; }
+    public void setCode(String code) { this.code = code; }
+
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+
+    public Boolean getIsActive() { return isActive; }
+    public void setIsActive(Boolean isActive) { this.isActive = isActive; }
+}

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<div th:fragment="dashboard" id="dashboardView" style="display: none;">
+    <div class="page-heading">
+        <div>
+            <p class="breadcrumb">Раздел / <span>Исполнительская дисциплина</span></p>
+            <h1>Исполнительская дисциплина</h1>
+            <p class="muted" id="dashboardScope">Аналитика</p>
+        </div>
+    </div>
+
+    <div class="dashboard-grid">
+        <div class="stat-card">
+            <h4>Активные документы</h4>
+            <div class="value" id="statActive">0</div>
+            <div class="sub">в работе сейчас</div>
+        </div>
+        <div class="stat-card">
+            <h4>Выполнено в срок</h4>
+            <div class="value" id="statOnTimePercent" style="color: var(--magenta);">0%</div>
+            <div class="sub"><span id="statOnTimeCount">0</span> документов</div>
+        </div>
+        <div class="stat-card">
+            <h4>Просрочено</h4>
+            <div class="value" id="statOverduePercent" style="color: #b00020;">0%</div>
+            <div class="sub"><span id="statOverdueCount">0</span> документов</div>
+        </div>
+    </div>
+
+    <div class="charts-row">
+        <div class="chart-container">
+            <h3>Соотношение выполненных и просроченных задач</h3>
+            <div class="chart-wrapper"><canvas id="donutChart"></canvas></div>
+        </div>
+        <div class="chart-container">
+            <h3>Документы за период</h3>
+            <div class="chart-wrapper"><canvas id="barChart"></canvas></div>
+        </div>
+    </div>
+
+    <div id="employeesTableContainer" style="display: none;">
+        <div class="chart-container" style="padding: 0; overflow: auto;">
+            <h3 style="padding: 24px 24px 0 24px; margin-bottom: 12px;">Статистика сотрудников</h3>
+            <table class="stats-table" id="employeesTable">
+                <thead>
+                <tr><th>Сотрудник</th><th>Всего задач</th><th>В срок</th><th>Просрочено</th><th>Эффективность</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<th:block th:fragment="modals">
+
+    <!-- Popover Фильтр -->
+    <div id="filterPopover" class="filter-popover" style="display: none;">
+        <div class="filter-popover-header" id="filterPopoverTitle">Фильтр</div>
+        <div class="filter-popover-body" id="filterPopoverBody"></div>
+        <div class="filter-popover-footer">
+            <button class="button button--secondary" style="padding: 4px 12px; height: 28px; font-size: 12px;" onclick="clearFilter()">Очистить</button>
+            <button class="button button--primary" style="padding: 4px 12px; height: 28px; font-size: 12px;" onclick="applyFilter()">ОК</button>
+        </div>
+    </div>
+
+    <!-- Универсальная модалка для форм справочников -->
+    <div class="custom-modal" id="formModal">
+        <div class="custom-modal-content">
+            <button class="custom-modal-close" onclick="closeFormModal()">×</button>
+            <h2 id="formModalTitle">Заголовок</h2>
+            <form id="dynamicForm" onsubmit="submitFormModal(event)">
+                <div id="formFieldsContainer"></div>
+                <div class="modal-actions">
+                    <button type="button" class="button button--secondary" onclick="closeFormModal()">Отмена</button>
+                    <button type="submit" class="button button--primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модалка выполнения действий с задачей -->
+    <div class="custom-modal" id="actionModal">
+        <div class="custom-modal-content">
+            <button class="custom-modal-close" onclick="closeActionModal()">×</button>
+            <h2 id="actionModalTitle">Действие с задачей</h2>
+
+            <div class="form-group" id="actionUserGroup" style="display: none;">
+                <label>Перенаправить на сотрудника:</label>
+                <select id="actionNewAssignee"></select>
+            </div>
+
+            <div class="form-group">
+                <label>Комментарий:</label>
+                <textarea id="actionComment" rows="3" placeholder="Введите комментарий (обязательно при отклонении)"></textarea>
+            </div>
+
+            <div class="modal-actions">
+                <button class="button button--secondary" onclick="closeActionModal()">Отмена</button>
+                <button class="button button--primary" id="btnSubmitAction" onclick="submitTaskAction()">Подтвердить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модалка подтверждения -->
+    <div class="custom-modal" id="confirmModal">
+        <div class="custom-modal-content">
+            <h2 id="confirmTitle">Подтверждение</h2>
+            <p id="confirmMessage" class="muted" style="margin-bottom: 24px;">Вы уверены?</p>
+            <div class="modal-actions">
+                <button class="button button--secondary" onclick="document.getElementById('confirmModal').classList.remove('open')">Отмена</button>
+                <button class="button button--primary" id="btnConfirmAction" style="background: #b00020; border-color: #b00020;">Да</button>
+            </div>
+        </div>
+    </div>
+
+</th:block>
+</body>
+</html>

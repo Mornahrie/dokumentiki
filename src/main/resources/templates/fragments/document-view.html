@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<div th:fragment="documentView" id="documentView" style="display: none;">
+  <div class="page-heading" style="margin-bottom: 24px;">
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <button class="button button--secondary" onclick="closeDocumentView()">← Назад</button>
+      <div>
+        <p class="breadcrumb">Раздел / <span>Просмотр документа</span></p>
+        <h1 id="docViewTitle" style="margin: 0; font-size: 24px;">—</h1>
+      </div>
+    </div>
+    <div style="display: flex; gap: 12px;">
+      <button class="button button--primary" id="btnRegisterDoc" onclick="registerDocument()" style="display: none;">Зарегистрировать</button>
+      <button class="button button--secondary" id="btnEditDoc" onclick="enableEditMode()" style="display: none;">Редактировать</button>
+      <button class="button button--primary" id="btnSaveDoc" onclick="saveDocChanges()" style="display: none;">Сохранить</button>
+    </div>
+  </div>
+
+  <div class="doc-view-container">
+    <div class="doc-tabs">
+      <button class="doc-tab-btn" id="btnTabDoc" onclick="switchDocTab('doc')">Документ</button>
+      <button class="doc-tab-btn" id="btnTabRoute" onclick="switchDocTab('route')">Ветка задач</button>
+      <button class="doc-tab-btn" id="btnTabHistory" onclick="switchDocTab('history')">История</button>
+    </div>
+
+    <!-- Вкладка 1: Документ -->
+    <div id="tab-doc" class="tab-content">
+      <div class="two-col-layout">
+        <div class="col">
+          <div class="section-card">
+            <h3>Основная информация</h3>
+            <div class="form-group"><label>Название документа</label><input type="text" id="mv_title" disabled></div>
+            <div class="form-group"><label>Содержание</label><textarea id="mv_content" rows="6" disabled></textarea></div>
+            <div class="form-group"><label>Тип документа</label><input type="text" id="mv_type" disabled></div>
+            <div class="form-group"><label>Категория</label><input type="text" id="mv_category" disabled></div>
+            <div class="form-group"><label>Номенклатура дел</label><input type="text" id="mv_nomenclature" disabled></div>
+            <div class="form-group"><label>Рег. номер</label><input type="text" id="mv_reg" disabled></div>
+            <div class="form-group"><label>Статус</label><input type="text" id="mv_status" disabled></div>
+            <div class="form-group"><label>Автор</label><input type="text" id="mv_author" disabled></div>
+            <div class="form-group"><label>Дата создания</label><input type="text" id="mv_created" disabled></div>
+          </div>
+        </div>
+        <div class="col">
+          <div class="section-card">
+            <h3>Файлы</h3>
+            <div id="mv_files" class="muted">Файлы отсутствуют</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Вкладка 2: Ветка задач -->
+    <div id="tab-route" class="tab-content">
+      <div class="timeline-stepper" id="routeTimeline">
+        <div class="muted" style="text-align:center;">Загрузка...</div>
+      </div>
+    </div>
+
+    <!-- Вкладка 3: История -->
+    <div id="tab-history" class="tab-content">
+      <div class="timeline" id="historyTimeline">
+        <div class="muted" style="text-align:center;">Загрузка...</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<div th:fragment="standardView" id="standardView">
+    <div class="page-heading">
+        <div>
+            <p class="breadcrumb">Раздел / <span id="currentSectionTitle">—</span></p>
+            <h1 id="pageTitle">—</h1>
+            <p class="muted" id="pageSubtitle"></p>
+        </div>
+        <div class="count-badge" id="docCount">0</div>
+    </div>
+
+    <div class="page-toolbar-container" id="mainToolbar">
+        <input id="tableSearch" class="topbar-search" placeholder="Поиск по текущей таблице..." oninput="applySearch()">
+
+        <select id="taskStatusFilter" style="display: none;" onchange="loadTasks(currentSection.code)">
+            <option value="ALL">Все задачи</option>
+            <option value="ACTIVE">В работе (активные)</option>
+            <option value="COMPLETED">Завершенные</option>
+        </select>
+
+        <div id="refToolbar"></div>
+    </div>
+
+    <div class="table-wrapper" id="tableContainer">
+        <div class="muted" style="padding: 32px; text-align: center;">Загрузка...</div>
+    </div>
+</div>
+</body>
+</html>
