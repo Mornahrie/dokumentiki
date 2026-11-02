@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -38,14 +39,6 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
     long countByCategoryCategoryId(Long categoryId);
     long countByStatus(String status);
 
-    // ============ BR-15 / F020: вкладки по типу ============
-    /**
-     * Документы по типу, доступные сотруднику:
-     *  - он автор, ЛИБО
-     *  - документ его подразделения
-     * Это соответствует BR-15 (автор или сотрудник того же подразделения).
-     * Задачи маршрутов смотрятся отдельно через /api/documents/tasks.
-     */
     @Query("SELECT DISTINCT d FROM Document d " +
             "WHERE d.documentType.code = :typeCode " +
             "AND (d.author.userId = :userId OR d.department.departmentId = :deptId) " +
@@ -54,7 +47,6 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
                                         @Param("deptId") Long deptId,
                                         @Param("typeCode") String typeCode);
 
-    // ============ Поиск с проверкой доступа (PER-01) ============
     @Query("SELECT d FROM Document d " +
             "WHERE (LOWER(d.title) LIKE LOWER(CONCAT('%', :q, '%')) " +
             "   OR LOWER(d.content) LIKE LOWER(CONCAT('%', :q, '%'))) " +
@@ -67,7 +59,6 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
                                     @Param("deptId") Long deptId,
                                     Pageable pageable);
 
-    // ============ BR-04: счёт для регистрационного номера ============
     @Query("SELECT COUNT(d) FROM Document d " +
             "WHERE d.department.departmentId = :deptId " +
             "AND d.nomenclature.nomenclatureId = :nomId " +
@@ -77,18 +68,23 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
                                   @Param("nomId") Long nomId,
                                   @Param("year") int year);
 
-    // Оставлены для совместимости
     @Query("SELECT DISTINCT d FROM Document d " +
             "JOIN DocRoute r ON r.document = d " +
             "WHERE r.assignedUser.userId = :userId " +
             "ORDER BY d.createdAt DESC")
     List<Document> findMyDocs(@Param("userId") Long userId);
 
-    // ============ BR-04: счёт для регистрационного номера (без года) ============
     @Query("SELECT COUNT(d) FROM Document d " +
             "WHERE d.department.departmentId = :deptId " +
             "AND d.nomenclature.nomenclatureId = :nomId " +
             "AND d.registrationNumber IS NOT NULL")
     long countRegistrationsByDeptAndCase(@Param("deptId") Long deptId,
                                          @Param("nomId") Long nomId);
+
+    @Query("SELECT MAX(d.registrationDate) FROM Document d " +
+            "WHERE d.department.departmentId = :deptId " +
+            "AND d.nomenclature.nomenclatureId = :nomId " +
+            "AND d.registrationNumber IS NOT NULL")
+    Optional<LocalDate> findLastRegistrationDate(@Param("deptId") Long deptId,
+                                                 @Param("nomId") Long nomId);
 }

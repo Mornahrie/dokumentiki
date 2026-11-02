@@ -11,6 +11,7 @@
       </div>
     </div>
     <div style="display: flex; gap: 12px;">
+      <button class="button button--secondary" id="btnAddFileVersion" onclick="addFileVersion()" style="display: none;">+ Новая версия файла</button>
       <button class="button button--primary" id="btnRegisterDoc" onclick="registerDocument()" style="display: none;">Зарегистрировать</button>
       <button class="button button--secondary" id="btnEditDoc" onclick="enableEditMode()" style="display: none;">Редактировать</button>
       <button class="button button--primary" id="btnSaveDoc" onclick="saveDocChanges()" style="display: none;">Сохранить</button>
@@ -52,15 +53,34 @@
 
     <!-- Вкладка 2: Ветка задач -->
     <div id="tab-route" class="tab-content">
+      <div style="display:flex; justify-content:flex-end; margin-bottom:16px;">
+        <button class="button button--secondary" onclick="printRoute()">🖨 Печать маршрута</button>
+      </div>
       <div class="timeline-stepper" id="routeTimeline">
         <div class="muted" style="text-align:center;">Загрузка...</div>
       </div>
     </div>
 
-    <!-- Вкладка 3: История -->
+    <!-- Вкладка 3: История (ТАБЛИЦА) -->
     <div id="tab-history" class="tab-content">
-      <div class="timeline" id="historyTimeline">
-        <div class="muted" style="text-align:center;">Загрузка...</div>
+      <div style="display:flex; justify-content:flex-end; margin-bottom:16px;">
+        <button class="button button--secondary" onclick="printHistory()">🖨 Печать истории</button>
+      </div>
+      <div class="table-shell" id="historyTableContainer">
+        <table>
+          <thead>
+          <tr>
+            <th style="width: 110px;">Дата</th>
+            <th style="width: 80px;">Время</th>
+            <th>ФИО</th>
+            <th>Действие</th>
+            <th>Комментарий</th>
+          </tr>
+          </thead>
+          <tbody id="historyTableBody">
+          <tr><td colspan="5" class="muted" style="text-align:center;">Загрузка...</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>

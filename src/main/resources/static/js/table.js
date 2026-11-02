@@ -1,6 +1,9 @@
-// ============================================================
-// Навигация по разделам, таблица, сортировка, фильтрация, поиск.
-// ============================================================
+var hideDrafts = false;
+
+function toggleDraftsVisibility() {
+    hideDrafts = document.getElementById('hideDraftsToggle').checked;
+    applySearch();
+}
 
 function renderSidebar() {
     var sb = document.getElementById('sidebar');
@@ -243,6 +246,9 @@ function closeFilterPopover() {
 function applySearch() {
     var q = document.getElementById('tableSearch').value.toLowerCase();
     var filtered = currentData.filter(function (row) {
+        // Скрытие черновиков (если включено)
+        if (hideDrafts && row.status === 'DRAFT') return false;
+
         if (q && !Object.keys(row).some(function (k) { return String(row[k]).toLowerCase().includes(q); })) return false;
         for (var key in activeFilters) {
             var rowVal = row;
