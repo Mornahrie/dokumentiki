@@ -378,16 +378,15 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Удалено"));
     }
 
-    // ================= NOMENCLATURES (обязательный тип и категория) =================
     @PostMapping("/nomenclatures")
     public ResponseEntity<?> createNomenclature(@RequestBody Map<String, Object> b) {
-        Long typeId = asLong(b.get("documentTypeId"));
+        Long categoryId = asLong(b.get("documentTypeId"));
+        if (categoryId == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Категория обязательна"));
+        }
+        Long typeId = asLong(b.get("categoryId"));
         if (typeId == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "Тип документа обязателен"));
-        }
-        Long catId = asLong(b.get("categoryId"));
-        if (catId == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Категория обязательна"));
         }
 
         Nomenclature n = new Nomenclature();
@@ -396,10 +395,11 @@ public class AdminController {
         n.setIsActive(true);
         n.setRetentionPeriod(Integer.valueOf(b.get("retentionPeriod").toString()));
         n.setDepartment(departmentRepository.findById(asLong(b.get("departmentId"))).orElseThrow());
-        n.setDocumentType(docTypeRepository.findById(typeId)
-                .orElseThrow(() -> new IllegalArgumentException("Тип документа не найден")));
-        n.setCategory(docCategoryRepository.findById(catId)
+
+        n.setDocumentType(docTypeRepository.findById(categoryId)
                 .orElseThrow(() -> new IllegalArgumentException("Категория не найдена")));
+        n.setCategory(docCategoryRepository.findById(typeId)
+                .orElseThrow(() -> new IllegalArgumentException("Тип документа не найден")));
 
         return ResponseEntity.ok(nomenclatureRepository.save(n));
     }
@@ -415,20 +415,20 @@ public class AdminController {
             n.setDepartment(departmentRepository.findById(asLong(b.get("departmentId"))).orElseThrow());
 
         if (b.containsKey("documentTypeId")) {
-            Long typeId = asLong(b.get("documentTypeId"));
+            Long categoryId = asLong(b.get("documentTypeId"));
+            if (categoryId == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Категория обязательна"));
+            }
+            n.setDocumentType(docTypeRepository.findById(categoryId)
+                    .orElseThrow(() -> new IllegalArgumentException("Категория не найдена")));
+        }
+        if (b.containsKey("categoryId")) {
+            Long typeId = asLong(b.get("categoryId"));
             if (typeId == null) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Тип документа обязателен"));
             }
-            n.setDocumentType(docTypeRepository.findById(typeId)
+            n.setCategory(docCategoryRepository.findById(typeId)
                     .orElseThrow(() -> new IllegalArgumentException("Тип документа не найден")));
-        }
-        if (b.containsKey("categoryId")) {
-            Long catId = asLong(b.get("categoryId"));
-            if (catId == null) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Категория обязательна"));
-            }
-            n.setCategory(docCategoryRepository.findById(catId)
-                    .orElseThrow(() -> new IllegalArgumentException("Категория не найдена")));
         }
 
         return ResponseEntity.ok(nomenclatureRepository.save(n));

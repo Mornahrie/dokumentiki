@@ -14,8 +14,8 @@ function renderSidebar() {
     });
     html += '</div></div>';
 
-    html += '<div class="nav-group"><button class="nav-group__title" onclick="toggleGroup(this)"><span>Внутренний документооборот</span><span>−</span></button><div class="nav-group__items">';
-    DOCS.forEach(function (d) {
+    html += '<div class="nav-group"><button class="nav-group__title" onclick="toggleGroup(this)"><span>Категории документов</span><span>−</span></button><div class="nav-group__items">';
+    CATEGORIES.forEach(function (d) {
         html += '<button class="nav-item" data-key="doc:' + d.code + '" onclick="selectSection(\'doc\',\'' + d.code + '\',this)">' + d.name + '</button>';
     });
     html += '</div></div>';
@@ -62,7 +62,7 @@ async function loadSection(section) {
 
     var name = '';
     if (section.type === 'task') name = (TASKS.find(x => x.code === section.code) || {}).name || '';
-    else if (section.type === 'doc') name = (DOCS.find(x => x.code === section.code) || {}).name || '';
+    else if (section.type === 'doc') name = (CATEGORIES.find(x => x.code === section.code) || {}).name || '';
     else name = (ADMIN_SECTIONS.find(x => x.code === section.code) || {}).name || '';
 
     document.getElementById('currentSectionTitle').textContent = name;

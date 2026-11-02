@@ -32,7 +32,8 @@ var TASKS = [
     { code: 'EXECUTION',    name: 'На исполнении',   action: 'EXECUTE' }
 ];
 
-var DOCS = [
+// Теперь это КАТЕГОРИИ (в БД это doc_types)
+var CATEGORIES = [
     { code: 'ORGANIZATIONAL', name: 'Организационные документы' },
     { code: 'ADMINISTRATIVE', name: 'Распорядительные документы' },
     { code: 'INFO_REFERENCE', name: 'Информационно-справочные документы' },
@@ -45,12 +46,13 @@ var ADMIN_SECTIONS = [
     { code: 'PERMISSIONS', name: 'Управление полномочиями' }
 ];
 
+// ИСПРАВЛЕНЫ НАЗВАНИЯ: doc-types = Категории, doc-categories = Типы
 var REF_TYPES = [
     { code: 'departments',    name: 'Подразделения' },
     { code: 'sectors',        name: 'Секторы' },
     { code: 'nomenclatures',  name: 'Номенклатуры дел' },
-    { code: 'doc-types',      name: 'Типы документов' },
-    { code: 'doc-categories', name: 'Категории документов' },
+    { code: 'doc-types',      name: 'Категории документов' },
+    { code: 'doc-categories', name: 'Типы документов' },
     { code: 'doc-actions',    name: 'Действия' },
     { code: 'route-stages',   name: 'Этапы маршрутов' },
     { code: 'base-roles',     name: 'Базовые роли' },

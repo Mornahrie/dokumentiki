@@ -209,24 +209,25 @@ public class DocumentController {
             return ResponseEntity.badRequest().body(Map.of("error", "Название документа обязательно"));
         }
         if (body.get("documentTypeId") == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Тип документа обязателен"));
+            return ResponseEntity.badRequest().body(Map.of("error", "Категория обязательна"));
         }
         if (body.get("categoryId") == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Категория обязательна"));
+            return ResponseEntity.badRequest().body(Map.of("error", "Тип документа обязателен"));
         }
         if (body.get("nomenclatureId") == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "Номенклатура дел обязательна"));
         }
 
-        DocType type = docTypeRepository.findById(asLong(body.get("documentTypeId"))).orElseThrow();
-        DocCategory category = docCategoryRepository.findById(asLong(body.get("categoryId"))).orElseThrow();
+        // В БД documentTypeId - это Категория, а categoryId - это Тип
+        DocType category = docTypeRepository.findById(asLong(body.get("documentTypeId"))).orElseThrow();
+        DocCategory type = docCategoryRepository.findById(asLong(body.get("categoryId"))).orElseThrow();
         Nomenclature nom = nomenclatureRepository.findById(asLong(body.get("nomenclatureId"))).orElseThrow();
 
-        // 1. Категория должна принадлежать выбранному типу
-        if (category.getDocumentType() == null
-                || !category.getDocumentType().getDocumentTypeId().equals(type.getDocumentTypeId())) {
+        // 1. Тип должен принадлежать выбранной категории
+        if (type.getDocumentType() == null
+                || !type.getDocumentType().getDocumentTypeId().equals(category.getDocumentTypeId())) {
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Категория не относится к выбранному типу документа"));
+                    .body(Map.of("error", "Тип документа не относится к выбранной категории"));
         }
 
         // 2. Номенклатура должна принадлежать подразделению автора (BR-15)
@@ -236,21 +237,21 @@ public class DocumentController {
                     .body(Map.of("error", "Номенклатура принадлежит другому подразделению"));
         }
 
-        // 3. Номенклатура должна соответствовать выбранному типу и категории
-        if (!nom.getDocumentType().getDocumentTypeId().equals(type.getDocumentTypeId())) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Номенклатура не подходит для выбранного типа документа"));
-        }
-        if (!nom.getCategory().getCategoryId().equals(category.getCategoryId())) {
+        // 3. Номенклатура должна соответствовать выбранным категории и типу
+        if (!nom.getDocumentType().getDocumentTypeId().equals(category.getDocumentTypeId())) {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "Номенклатура не подходит для выбранной категории"));
+        }
+        if (!nom.getCategory().getCategoryId().equals(type.getCategoryId())) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Номенклатура не подходит для выбранного типа"));
         }
 
         Document doc = new Document();
         doc.setTitle(title);
         doc.setContent((String) body.getOrDefault("content", ""));
-        doc.setDocumentType(type);
-        doc.setCategory(category);
+        doc.setDocumentType(category);
+        doc.setCategory(type);
         doc.setNomenclature(nom);
         doc.setAuthor(user);
         doc.setDepartment(user.getDepartment());
