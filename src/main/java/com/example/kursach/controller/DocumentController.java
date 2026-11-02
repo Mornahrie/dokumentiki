@@ -236,14 +236,12 @@ public class DocumentController {
                     .body(Map.of("error", "Номенклатура принадлежит другому подразделению"));
         }
 
-        // 3. Номенклатура должна соответствовать типу и категории (если заданы)
-        if (nom.getDocumentType() != null
-                && !nom.getDocumentType().getDocumentTypeId().equals(type.getDocumentTypeId())) {
+        // 3. Номенклатура должна соответствовать выбранному типу и категории
+        if (!nom.getDocumentType().getDocumentTypeId().equals(type.getDocumentTypeId())) {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "Номенклатура не подходит для выбранного типа документа"));
         }
-        if (nom.getCategory() != null
-                && !nom.getCategory().getCategoryId().equals(category.getCategoryId())) {
+        if (!nom.getCategory().getCategoryId().equals(category.getCategoryId())) {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "Номенклатура не подходит для выбранной категории"));
         }

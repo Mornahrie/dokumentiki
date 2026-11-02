@@ -88,22 +88,28 @@
                     <label>Содержание</label>
                     <textarea id="content" rows="6" placeholder="Краткое содержание или текст документа..."></textarea>
                 </div>
+
+                <!-- 1. Сначала КАТЕГОРИЯ -->
                 <div class="form-group">
-                    <label>Тип документа *</label>
-                    <select id="documentTypeId" onchange="onDocTypeChange()">
+                    <label>Категория *</label>
+                    <select id="categoryId" onchange="onCategoryChange()">
                         <option value="">Загрузка...</option>
                     </select>
                 </div>
+
+                <!-- 2. Затем ТИП (фильтруется по категории) -->
                 <div class="form-group">
-                    <label>Категория *</label>
-                    <select id="categoryId" disabled onchange="onCategoryChange()">
-                        <option value="">Сначала выберите тип</option>
+                    <label>Тип документа *</label>
+                    <select id="documentTypeId" disabled onchange="onDocTypeChange()">
+                        <option value="">Сначала выберите категорию</option>
                     </select>
                 </div>
+
+                <!-- 3. И только потом НОМЕНКЛАТУРА -->
                 <div class="form-group">
                     <label>Номенклатура дел *</label>
                     <select id="nomenclatureId" disabled>
-                        <option value="">Сначала выберите тип и категорию</option>
+                        <option value="">Сначала выберите тип</option>
                     </select>
                 </div>
             </div>
@@ -263,8 +269,7 @@
             executeAction  = allActions.find(a => a.code === 'EXECUTE');
             readAction     = allActions.find(a => a.code === 'READ');
 
-            populateDocTypes();
-            // Номенклатуры сразу не заполняем — они зависят от типа и категории
+            populateCategories();
         } catch (e) {
             showError('Ошибка загрузки справочников: ' + e.message);
         }
@@ -276,28 +281,59 @@
         return s;
     }
 
-    function populateDocTypes() {
-        const sel = document.getElementById('documentTypeId');
-        if (!allDocTypes.length) { sel.innerHTML = '<option value="">Нет доступных типов</option>'; return; }
-        sel.innerHTML = '<option value="">Выберите тип</option>' +
-            allDocTypes.map(t => `<option value="${t.documentTypeId}">${escapeHtml(t.name)}</option>`).join('');
-    }
-
-    /**
-     * Номенклатуры фильтруются по совпадению с выбранным типом и категорией.
-     * Если у номенклатуры documentType/category == null — универсальное дело.
-     */
-    function populateNomenclatures() {
-        const sel = document.getElementById('nomenclatureId');
-        const typeId = parseInt(document.getElementById('documentTypeId').value);
-        const catId  = parseInt(document.getElementById('categoryId').value);
-
-        if (!typeId || !catId) {
-            sel.innerHTML = '<option value="">Сначала выберите тип и категорию</option>';
-            sel.disabled = true;
+    // Заполняем выпадающий список КАТЕГОРИЙ
+    function populateCategories() {
+        const sel = document.getElementById('categoryId');
+        if (!allCategories.length) {
+            sel.innerHTML = '<option value="">Нет доступных категорий</option>';
             return;
         }
+        sel.innerHTML = '<option value="">Выберите категорию</option>' +
+            allCategories.map(c => `<option value="${c.categoryId}">${escapeHtml(c.name)}</option>`).join('');
+    }
 
+    // Обработчик выбора категории
+    function onCategoryChange() {
+        const catId = parseInt(document.getElementById('categoryId').value);
+        const typeSelect = document.getElementById('documentTypeId');
+        const nomSelect  = document.getElementById('nomenclatureId');
+
+        // Сбрасываем тип и номенклатуру при смене категории
+        typeSelect.innerHTML = '<option value="">Сначала выберите категорию</option>';
+        typeSelect.disabled = true;
+        nomSelect.innerHTML = '<option value="">Сначала выберите тип</option>';
+        nomSelect.disabled = true;
+
+        if (!catId) return;
+
+        // Ищем все типы, которые относятся к выбранной категории
+        // (в базе данных тип привязан к категории через поле documentType)
+        const cat = allCategories.find(c => c.categoryId === catId);
+
+        if (cat && cat.documentType) {
+            // Показываем доступные типы (обычно он один, так как связь жесткая)
+            typeSelect.innerHTML = '<option value="">Выберите тип</option>' +
+                `<option value="${cat.documentType.documentTypeId}">${escapeHtml(cat.documentType.name)}</option>`;
+            typeSelect.disabled = false;
+        } else {
+            typeSelect.innerHTML = '<option value="">Для этой категории нет доступных типов</option>';
+            typeSelect.disabled = true;
+        }
+    }
+
+    // Обработчик выбора типа
+    function onDocTypeChange() {
+        const typeId = parseInt(document.getElementById('documentTypeId').value);
+        const catId  = parseInt(document.getElementById('categoryId').value);
+        const nomSelect = document.getElementById('nomenclatureId');
+
+        // Сбрасываем номенклатуры при смене типа
+        nomSelect.innerHTML = '<option value="">Сначала выберите тип</option>';
+        nomSelect.disabled = true;
+
+        if (!typeId || !catId) return;
+
+        // Фильтруем номенклатуры по выбранному типу и категории
         const filtered = allNomenclatures.filter(function (n) {
             if (n.documentType && n.documentType.documentTypeId !== typeId) return false;
             if (n.category && n.category.categoryId !== catId) return false;
@@ -305,44 +341,14 @@
         });
 
         if (!filtered.length) {
-            sel.innerHTML = '<option value="">Нет подходящих номенклатур для выбранного типа/категории</option>';
-            sel.disabled = true;
+            nomSelect.innerHTML = '<option value="">Нет подходящих номенклатур для выбранного типа</option>';
+            nomSelect.disabled = true;
             return;
         }
 
-        sel.innerHTML = '<option value="">Выберите номенклатуру</option>' +
+        nomSelect.innerHTML = '<option value="">Выберите номенклатуру</option>' +
             filtered.map(n => `<option value="${n.nomenclatureId}">${escapeHtml(n.caseCode)} — ${escapeHtml(n.title)}</option>`).join('');
-        sel.disabled = false;
-    }
-
-    function onDocTypeChange() {
-        const typeId = parseInt(document.getElementById('documentTypeId').value);
-        const catSelect = document.getElementById('categoryId');
-
-        // При смене типа сбрасываем номенклатуры
-        const nomSelect = document.getElementById('nomenclatureId');
-        nomSelect.innerHTML = '<option value="">Сначала выберите тип и категорию</option>';
-        nomSelect.disabled = true;
-
-        if (!typeId) {
-            catSelect.innerHTML = '<option value="">Сначала выберите тип</option>';
-            catSelect.disabled = true;
-            return;
-        }
-
-        const filtered = allCategories.filter(c => c.documentType && c.documentType.documentTypeId === typeId);
-        if (!filtered.length) {
-            catSelect.innerHTML = '<option value="">Нет категорий для этого типа</option>';
-            catSelect.disabled = true;
-            return;
-        }
-        catSelect.innerHTML = '<option value="">Выберите категорию</option>' +
-            filtered.map(c => `<option value="${c.categoryId}">${escapeHtml(c.name)}</option>`).join('');
-        catSelect.disabled = false;
-    }
-
-    function onCategoryChange() {
-        populateNomenclatures();
+        nomSelect.disabled = false;
     }
 
     function getSelectedTypeCode() {
@@ -413,8 +419,8 @@
 
         const title = document.getElementById('title').value.trim();
         if (!title) { showError('Введите название документа'); return; }
-        if (!document.getElementById('documentTypeId').value) { showError('Выберите тип документа'); return; }
         if (!document.getElementById('categoryId').value)     { showError('Выберите категорию'); return; }
+        if (!document.getElementById('documentTypeId').value) { showError('Выберите тип документа'); return; }
         if (!document.getElementById('nomenclatureId').value) { showError('Выберите номенклатуру дел'); return; }
 
         if (!allUsers.length) { showError('Справочник пользователей не загружен'); return; }

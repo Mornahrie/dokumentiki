@@ -38,8 +38,8 @@ function renderRefTable(data) {
             { key: 'caseCode', label: 'Шифр' },
             { key: 'title', label: 'Заголовок' },
             { key: 'department.name', label: 'Подразделение' },
-            { key: 'documentType.name', label: 'Тип', fmt: function (v) { return v || 'Все'; } },
-            { key: 'category.name', label: 'Категория', fmt: function (v) { return v || 'Все'; } },
+            { key: 'category.name', label: 'Категория', fmt: function (v) { return v || '—'; } },
+            { key: 'documentType.name', label: 'Тип', fmt: function (v) { return v || '—'; } },
             { key: 'retentionPeriod', label: 'Срок (лет)' },
             { key: 'isActive', label: 'Активно', fmt: function (v) { return v ? 'Да' : 'Нет'; } }
         ], idKey: 'nomenclatureId' },
@@ -136,30 +136,30 @@ async function openRefModal(id) {
             return '<option value="' + r.code + '" ' + sel + '>' + r.name + '</option>';
         }).join('');
     }
-    if (currentRefType === 'nomenclatures') {
-        // Подгружаем типы
-        var resNT = await fetch('/api/admin/doc-types', { headers: { 'Authorization': 'Bearer ' + token } });
-        var listNT = await resNT.json();
-        var selectedTypeId = data.documentType ? data.documentType.documentTypeId : null;
-        docTypeOptions = '<option value="">Все типы</option>' + listNT.map(function (d) {
-            var sel = selectedTypeId === d.documentTypeId ? 'selected' : '';
-            return '<option value="' + d.documentTypeId + '" ' + sel + '>' + d.name + '</option>';
-        }).join('');
 
-        // Подгружаем категории
-        var resNC = await fetch('/api/admin/doc-categories', { headers: { 'Authorization': 'Bearer ' + token } });
-        var listNC = await resNC.json();
-        window._adminAllCategories = listNC;
+    // ЗАГРУЗКА КАТЕГОРИЙ И ТИПОВ ДЛЯ НОМЕНКЛАТУР
+    if (currentRefType === 'nomenclatures') {
+        var resC = await fetch('/api/admin/doc-categories', { headers: { 'Authorization': 'Bearer ' + token } });
+        var listC = await resC.json();
+        window._adminAllCategories = listC;
 
         var selectedCatId = data.category ? data.category.categoryId : null;
-        var filteredCats = selectedTypeId
-            ? listNC.filter(function (c) { return c.documentType && c.documentType.documentTypeId === selectedTypeId; })
-            : listNC;
+        var selectedTypeId = data.documentType ? data.documentType.documentTypeId : null;
 
-        catOptionsForNom = '<option value="">Все категории</option>' + filteredCats.map(function (c) {
+        // Сначала заполняем КАТЕГОРИИ
+        catOptionsForNom = '<option value="">— Выберите категорию —</option>' + listC.map(function (c) {
             var sel = selectedCatId === c.categoryId ? 'selected' : '';
             return '<option value="' + c.categoryId + '" ' + sel + '>' + c.name + '</option>';
         }).join('');
+
+        // Затем заполняем ТИПЫ (только если выбрана категория при редактировании)
+        docTypeOptions = '<option value="">— Сначала выберите категорию —</option>';
+        if (selectedCatId && selectedTypeId) {
+            var cat = listC.find(function(c) { return c.categoryId === selectedCatId; });
+            if (cat && cat.documentType) {
+                docTypeOptions = '<option value="' + cat.documentType.documentTypeId + '" selected>' + cat.documentType.name + '</option>';
+            }
+        }
     }
 
     switch (currentRefType) {
@@ -184,13 +184,11 @@ async function openRefModal(id) {
                 '<div class="form-group"><label>Шифр дела</label><input name="caseCode" value="' + v('caseCode') + '" required></div>' +
                 '<div class="form-group"><label>Заголовок</label><input name="title" value="' + v('title') + '" required></div>' +
                 '<div class="form-group"><label>Срок хранения (лет)</label><input type="number" name="retentionPeriod" value="' + v('retentionPeriod') + '" required></div>' +
-                '<div class="form-group"><label>Тип документа (опционально)</label>' +
-                    '<select name="documentTypeId" id="nomTypeSelect" onchange="filterNomCategories()">' + docTypeOptions + '</select>' +
-                    '<small class="muted" style="margin-top:4px;">Если не выбрано — подходит для любого типа</small>' +
+                '<div class="form-group"><label>Категория *</label>' +
+                    '<select name="categoryId" id="nomCategorySelect" onchange="onNomCategoryChange()" required>' + catOptionsForNom + '</select>' +
                 '</div>' +
-                '<div class="form-group"><label>Категория (опционально)</label>' +
-                    '<select name="categoryId" id="nomCategorySelect">' + catOptionsForNom + '</select>' +
-                    '<small class="muted" style="margin-top:4px;">Если не выбрано — подойдёт для любой категории выбранного типа</small>' +
+                '<div class="form-group"><label>Тип документа *</label>' +
+                    '<select name="documentTypeId" id="nomTypeSelect" required>' + docTypeOptions + '</select>' +
                 '</div>';
             break;
         case 'doc-categories':
@@ -239,21 +237,25 @@ async function openRefModal(id) {
     });
 }
 
-// Фильтрация категорий в форме номенклатуры по выбранному типу
-function filterNomCategories() {
+// Подтягивание типа при смене категории в форме номенклатуры
+function onNomCategoryChange() {
+    var catSelect = document.getElementById('nomCategorySelect');
     var typeSelect = document.getElementById('nomTypeSelect');
-    var catSelect  = document.getElementById('nomCategorySelect');
-    if (!typeSelect || !catSelect) return;
+    if (!catSelect || !typeSelect) return;
 
-    var typeId = parseInt(typeSelect.value);
-    var allCats = window._adminAllCategories || [];
-    var filtered = typeId
-        ? allCats.filter(function (c) { return c.documentType && c.documentType.documentTypeId === typeId; })
-        : allCats;
+    var catId = parseInt(catSelect.value);
+    if (!catId) {
+        typeSelect.innerHTML = '<option value="">— Сначала выберите категорию —</option>';
+        return;
+    }
 
-    catSelect.innerHTML = '<option value="">Все категории</option>' + filtered.map(function (c) {
-        return '<option value="' + c.categoryId + '">' + c.name + '</option>';
-    }).join('');
+    var cat = (window._adminAllCategories || []).find(function(c) { return c.categoryId === catId; });
+    if (cat && cat.documentType) {
+        // Подставляем тип, привязанный к категории
+        typeSelect.innerHTML = '<option value="' + cat.documentType.documentTypeId + '" selected>' + cat.documentType.name + '</option>';
+    } else {
+        typeSelect.innerHTML = '<option value="">— Тип не найден —</option>';
+    }
 }
 
 function confirmDeleteRef(id, type) {
