@@ -22,7 +22,6 @@ public interface NomenclatureRepository extends JpaRepository<Nomenclature, Long
 
     List<Nomenclature> findByTitleContainingIgnoreCase(String titlePart);
 
-    /** Блокирует строку на время транзакции для безопасного вычисления регистрационного номера */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT n FROM Nomenclature n WHERE n.nomenclatureId = :id")
     Optional<Nomenclature> findByIdForUpdate(@Param("id") Long id);

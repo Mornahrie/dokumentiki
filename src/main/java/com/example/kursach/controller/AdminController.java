@@ -284,11 +284,52 @@ public class AdminController {
     // ================= СПРАВОЧНИКИ =================
     @GetMapping("/departments")    public ResponseEntity<?> getDepartments()   { return ResponseEntity.ok(departmentRepository.findAll()); }
     @GetMapping("/sectors")        public ResponseEntity<?> getSectors()       { return ResponseEntity.ok(sectorRepository.findAllByOrderByNameAsc()); }
-    @GetMapping("/nomenclatures")  public ResponseEntity<?> getNomenclatures() { return ResponseEntity.ok(nomenclatureRepository.findAll()); }
     @GetMapping("/doc-types")      public ResponseEntity<?> getDocTypes()      { return ResponseEntity.ok(docTypeRepository.findAll()); }
     @GetMapping("/doc-categories") public ResponseEntity<?> getDocCategories() { return ResponseEntity.ok(docCategoryRepository.findAll()); }
     @GetMapping("/doc-actions")    public ResponseEntity<?> getDocActions()    { return ResponseEntity.ok(docActionRepository.findAll()); }
     @GetMapping("/route-stages")   public ResponseEntity<?> getRouteStages()   { return ResponseEntity.ok(routeStageRepository.findAll()); }
+
+    /**
+     * Номенклатуры возвращаются с явно сериализованными вложенными полями
+     * department / documentType / category, чтобы клиент мог отфильтровать
+     * список без лишних запросов и без LazyInitializationException.
+     */
+    @GetMapping("/nomenclatures")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> getNomenclatures() {
+        List<Map<String, Object>> result = nomenclatureRepository.findAll().stream().map(n -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("nomenclatureId", n.getNomenclatureId());
+            m.put("caseCode", n.getCaseCode());
+            m.put("title", n.getTitle());
+            m.put("retentionPeriod", n.getRetentionPeriod());
+            m.put("isActive", n.getIsActive());
+
+            if (n.getDepartment() != null) {
+                Map<String, Object> dept = new LinkedHashMap<>();
+                dept.put("departmentId", n.getDepartment().getDepartmentId());
+                dept.put("code", n.getDepartment().getCode());
+                dept.put("name", n.getDepartment().getName());
+                m.put("department", dept);
+            }
+            if (n.getDocumentType() != null) {
+                Map<String, Object> t = new LinkedHashMap<>();
+                t.put("documentTypeId", n.getDocumentType().getDocumentTypeId());
+                t.put("code", n.getDocumentType().getCode());
+                t.put("name", n.getDocumentType().getName());
+                m.put("documentType", t);
+            }
+            if (n.getCategory() != null) {
+                Map<String, Object> c = new LinkedHashMap<>();
+                c.put("categoryId", n.getCategory().getCategoryId());
+                c.put("code", n.getCategory().getCode());
+                c.put("name", n.getCategory().getName());
+                m.put("category", c);
+            }
+            return m;
+        }).toList();
+        return ResponseEntity.ok(result);
+    }
 
     @PostMapping("/departments")
     public ResponseEntity<?> createDepartment(@RequestBody Map<String, Object> b) {
@@ -339,6 +380,7 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Удалено"));
     }
 
+    // ================= NOMENCLATURES (с привязкой к типу и категории) =================
     @PostMapping("/nomenclatures")
     public ResponseEntity<?> createNomenclature(@RequestBody Map<String, Object> b) {
         Nomenclature n = new Nomenclature();
@@ -347,18 +389,41 @@ public class AdminController {
         n.setIsActive(true);
         n.setRetentionPeriod(Integer.valueOf(b.get("retentionPeriod").toString()));
         n.setDepartment(departmentRepository.findById(asLong(b.get("departmentId"))).orElseThrow());
+
+        Long typeId = asLong(b.get("documentTypeId"));
+        if (typeId != null) {
+            n.setDocumentType(docTypeRepository.findById(typeId).orElse(null));
+        }
+        Long catId = asLong(b.get("categoryId"));
+        if (catId != null) {
+            n.setCategory(docCategoryRepository.findById(catId).orElse(null));
+        }
+
         return ResponseEntity.ok(nomenclatureRepository.save(n));
     }
+
     @PutMapping("/nomenclatures/{id}")
     public ResponseEntity<?> updateNomenclature(@PathVariable Long id, @RequestBody Map<String, Object> b) {
         Nomenclature n = nomenclatureRepository.findById(id).orElseThrow();
         if (b.containsKey("caseCode")) n.setCaseCode((String) b.get("caseCode"));
         if (b.containsKey("title")) n.setTitle((String) b.get("title"));
-        if (b.containsKey("retentionPeriod")) n.setRetentionPeriod(Integer.valueOf(b.get("retentionPeriod").toString()));
+        if (b.containsKey("retentionPeriod"))
+            n.setRetentionPeriod(Integer.valueOf(b.get("retentionPeriod").toString()));
         if (b.containsKey("departmentId"))
             n.setDepartment(departmentRepository.findById(asLong(b.get("departmentId"))).orElseThrow());
+
+        if (b.containsKey("documentTypeId")) {
+            Long typeId = asLong(b.get("documentTypeId"));
+            n.setDocumentType(typeId == null ? null : docTypeRepository.findById(typeId).orElse(null));
+        }
+        if (b.containsKey("categoryId")) {
+            Long catId = asLong(b.get("categoryId"));
+            n.setCategory(catId == null ? null : docCategoryRepository.findById(catId).orElse(null));
+        }
+
         return ResponseEntity.ok(nomenclatureRepository.save(n));
     }
+
     @DeleteMapping("/nomenclatures/{id}")
     public ResponseEntity<?> deleteNomenclature(@PathVariable Long id) {
         Nomenclature n = nomenclatureRepository.findById(id).orElseThrow();
@@ -367,6 +432,7 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Удалено"));
     }
 
+    // ================= DOC TYPES / CATEGORIES =================
     @PostMapping("/doc-types")
     public ResponseEntity<?> createDocType(@RequestBody Map<String, Object> b) {
         DocType t = new DocType();
@@ -416,7 +482,7 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Удалено"));
     }
 
-    // ================= DOC ACTIONS (hard delete с защитой) =================
+    // ================= DOC ACTIONS =================
     @PostMapping("/doc-actions")
     public ResponseEntity<?> createDocAction(@RequestBody Map<String, Object> b) {
         DocAction a = new DocAction();
@@ -446,7 +512,7 @@ public class AdminController {
         }
     }
 
-    // ================= ROUTE STAGES (hard delete с защитой) =================
+    // ================= ROUTE STAGES =================
     @PostMapping("/route-stages")
     public ResponseEntity<?> createRouteStage(@RequestBody Map<String, Object> b) {
         RouteStage s = new RouteStage();
@@ -476,7 +542,7 @@ public class AdminController {
         }
     }
 
-    // ================= BASE ROLES (hard delete с защитой) =================
+    // ================= BASE ROLES =================
     @PostMapping("/base-roles")
     public ResponseEntity<?> createBaseRole(@RequestBody Map<String, Object> b) {
         BaseRole r = new BaseRole();
@@ -504,7 +570,7 @@ public class AdminController {
         }
     }
 
-    // ================= POSITIONS (CRUD + удаление с защитой) =================
+    // ================= POSITIONS =================
     @PostMapping("/positions")
     public ResponseEntity<?> createPosition(@RequestBody Map<String, Object> b) {
         Position p = new Position();
@@ -521,11 +587,6 @@ public class AdminController {
         return ResponseEntity.ok(positionRepository.save(p));
     }
 
-    /**
-     * Удаление должности. Нельзя удалить, если:
-     *  - должность назначена хотя бы одному пользователю;
-     *  - у должности есть связанные полномочия (PosPermission).
-     */
     @DeleteMapping("/positions/{id}")
     @Transactional
     public ResponseEntity<?> deletePosition(@PathVariable Long id) {
@@ -544,7 +605,7 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Должность удалена"));
     }
 
-    // ================= PERMISSIONS (CRUD + удаление с защитой) =================
+    // ================= PERMISSIONS =================
     @PostMapping("/permissions/create")
     public ResponseEntity<?> createPermission(@RequestBody Map<String, Object> b) {
         Permission p = new Permission();

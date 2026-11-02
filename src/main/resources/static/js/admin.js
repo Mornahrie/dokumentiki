@@ -34,7 +34,15 @@ function renderRefTable(data) {
     var configs = {
         'departments':    { cols: [{ key: 'code', label: 'Код' }, { key: 'name', label: 'Название' }, { key: 'isActive', label: 'Активно', fmt: function (v) { return v ? 'Да' : 'Нет'; } }], idKey: 'departmentId' },
         'sectors':        { cols: [{ key: 'code', label: 'Код' }, { key: 'name', label: 'Название' }, { key: 'department.name', label: 'Подразделение' }, { key: 'isActive', label: 'Активно', fmt: function (v) { return v ? 'Да' : 'Нет'; } }], idKey: 'sectorId' },
-        'nomenclatures':  { cols: [{ key: 'caseCode', label: 'Шифр' }, { key: 'title', label: 'Заголовок' }, { key: 'department.name', label: 'Подразделение' }, { key: 'retentionPeriod', label: 'Срок (лет)' }, { key: 'isActive', label: 'Активно', fmt: function (v) { return v ? 'Да' : 'Нет'; } }], idKey: 'nomenclatureId' },
+        'nomenclatures':  { cols: [
+            { key: 'caseCode', label: 'Шифр' },
+            { key: 'title', label: 'Заголовок' },
+            { key: 'department.name', label: 'Подразделение' },
+            { key: 'documentType.name', label: 'Тип', fmt: function (v) { return v || 'Все'; } },
+            { key: 'category.name', label: 'Категория', fmt: function (v) { return v || 'Все'; } },
+            { key: 'retentionPeriod', label: 'Срок (лет)' },
+            { key: 'isActive', label: 'Активно', fmt: function (v) { return v ? 'Да' : 'Нет'; } }
+        ], idKey: 'nomenclatureId' },
         'doc-types':      { cols: [{ key: 'code', label: 'Код' }, { key: 'name', label: 'Название' }, { key: 'isActive', label: 'Активно', fmt: function (v) { return v ? 'Да' : 'Нет'; } }], idKey: 'documentTypeId' },
         'doc-categories': { cols: [{ key: 'code', label: 'Код' }, { key: 'name', label: 'Название' }, { key: 'documentType.name', label: 'Тип документа' }, { key: 'isActive', label: 'Активно', fmt: function (v) { return v ? 'Да' : 'Нет'; } }], idKey: 'categoryId' },
         'doc-actions':    { cols: [{ key: 'code', label: 'Код' }, { key: 'name', label: 'Название' }, { key: 'description', label: 'Описание' }], idKey: 'actionId' },
@@ -95,7 +103,7 @@ async function openRefModal(id) {
     var v = function (key) { return data[key] == null ? '' : data[key]; };
     var fields = '';
 
-    var deptOptions = '', docTypeOptions = '', posOptions = '', roleOptions = '';
+    var deptOptions = '', docTypeOptions = '', posOptions = '', roleOptions = '', catOptionsForNom = '';
 
     if (['sectors', 'nomenclatures', 'users'].indexOf(currentRefType) !== -1) {
         var res = await fetch('/api/admin/departments', { headers: { 'Authorization': 'Bearer ' + token } });
@@ -128,6 +136,31 @@ async function openRefModal(id) {
             return '<option value="' + r.code + '" ' + sel + '>' + r.name + '</option>';
         }).join('');
     }
+    if (currentRefType === 'nomenclatures') {
+        // Подгружаем типы
+        var resNT = await fetch('/api/admin/doc-types', { headers: { 'Authorization': 'Bearer ' + token } });
+        var listNT = await resNT.json();
+        var selectedTypeId = data.documentType ? data.documentType.documentTypeId : null;
+        docTypeOptions = '<option value="">Все типы</option>' + listNT.map(function (d) {
+            var sel = selectedTypeId === d.documentTypeId ? 'selected' : '';
+            return '<option value="' + d.documentTypeId + '" ' + sel + '>' + d.name + '</option>';
+        }).join('');
+
+        // Подгружаем категории
+        var resNC = await fetch('/api/admin/doc-categories', { headers: { 'Authorization': 'Bearer ' + token } });
+        var listNC = await resNC.json();
+        window._adminAllCategories = listNC;
+
+        var selectedCatId = data.category ? data.category.categoryId : null;
+        var filteredCats = selectedTypeId
+            ? listNC.filter(function (c) { return c.documentType && c.documentType.documentTypeId === selectedTypeId; })
+            : listNC;
+
+        catOptionsForNom = '<option value="">Все категории</option>' + filteredCats.map(function (c) {
+            var sel = selectedCatId === c.categoryId ? 'selected' : '';
+            return '<option value="' + c.categoryId + '" ' + sel + '>' + c.name + '</option>';
+        }).join('');
+    }
 
     switch (currentRefType) {
         case 'departments':
@@ -146,10 +179,19 @@ async function openRefModal(id) {
                      '<div class="form-group"><label>Название</label><input name="name" value="' + v('name') + '" required></div>';
             break;
         case 'nomenclatures':
-            fields = '<div class="form-group"><label>Подразделение</label><select name="departmentId" required>' + deptOptions + '</select></div>' +
-                     '<div class="form-group"><label>Шифр дела</label><input name="caseCode" value="' + v('caseCode') + '" required></div>' +
-                     '<div class="form-group"><label>Заголовок</label><input name="title" value="' + v('title') + '" required></div>' +
-                     '<div class="form-group"><label>Срок хранения (лет)</label><input type="number" name="retentionPeriod" value="' + v('retentionPeriod') + '" required></div>';
+            fields =
+                '<div class="form-group"><label>Подразделение</label><select name="departmentId" required>' + deptOptions + '</select></div>' +
+                '<div class="form-group"><label>Шифр дела</label><input name="caseCode" value="' + v('caseCode') + '" required></div>' +
+                '<div class="form-group"><label>Заголовок</label><input name="title" value="' + v('title') + '" required></div>' +
+                '<div class="form-group"><label>Срок хранения (лет)</label><input type="number" name="retentionPeriod" value="' + v('retentionPeriod') + '" required></div>' +
+                '<div class="form-group"><label>Тип документа (опционально)</label>' +
+                    '<select name="documentTypeId" id="nomTypeSelect" onchange="filterNomCategories()">' + docTypeOptions + '</select>' +
+                    '<small class="muted" style="margin-top:4px;">Если не выбрано — подходит для любого типа</small>' +
+                '</div>' +
+                '<div class="form-group"><label>Категория (опционально)</label>' +
+                    '<select name="categoryId" id="nomCategorySelect">' + catOptionsForNom + '</select>' +
+                    '<small class="muted" style="margin-top:4px;">Если не выбрано — подойдёт для любой категории выбранного типа</small>' +
+                '</div>';
             break;
         case 'doc-categories':
             fields = '<div class="form-group"><label>Тип документа</label><select name="documentTypeId" required>' + docTypeOptions + '</select></div>' +
@@ -187,11 +229,31 @@ async function openRefModal(id) {
                 headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData)
             });
-            if (!res.ok) throw new Error();
+            if (!res.ok) {
+                var err = await res.json().catch(function () { return {}; });
+                throw new Error(err.error || 'Ошибка сохранения');
+            }
             closeFormModal();
             await loadReferenceManagement();
-        } catch (e) { alert('Ошибка сохранения'); }
+        } catch (e) { alert(e.message); }
     });
+}
+
+// Фильтрация категорий в форме номенклатуры по выбранному типу
+function filterNomCategories() {
+    var typeSelect = document.getElementById('nomTypeSelect');
+    var catSelect  = document.getElementById('nomCategorySelect');
+    if (!typeSelect || !catSelect) return;
+
+    var typeId = parseInt(typeSelect.value);
+    var allCats = window._adminAllCategories || [];
+    var filtered = typeId
+        ? allCats.filter(function (c) { return c.documentType && c.documentType.documentTypeId === typeId; })
+        : allCats;
+
+    catSelect.innerHTML = '<option value="">Все категории</option>' + filtered.map(function (c) {
+        return '<option value="' + c.categoryId + '">' + c.name + '</option>';
+    }).join('');
 }
 
 function confirmDeleteRef(id, type) {
@@ -327,7 +389,6 @@ async function openGrantPermissionModal(userId) {
             '<div class="form-group"><label>Действует до (необязательно)</label><input type="datetime-local" name="expiresAt"></div>';
 
         showModal('Выдача полномочия', fields, async function(formData) {
-            // Очищаем пустые поля, чтобы бэкенд получил null
             Object.keys(formData).forEach(function(key) {
                 if (formData[key] === '') delete formData[key];
             });
@@ -343,7 +404,7 @@ async function openGrantPermissionModal(userId) {
                     throw new Error(err.error || 'Ошибка выдачи полномочия');
                 }
                 closeFormModal();
-                await openUserPermissions(userId); // Перезагружаем список
+                await openUserPermissions(userId);
             } catch (e) {
                 alert(e.message);
             }

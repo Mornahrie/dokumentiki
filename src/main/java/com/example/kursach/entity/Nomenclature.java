@@ -17,6 +17,14 @@ public class Nomenclature {
     @JoinColumn(name = "department_id", nullable = false)
     private Department department;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "document_type_id")
+    private DocType documentType;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id")
+    private DocCategory category;
+
     @Column(name = "case_code", nullable = false, length = 20)
     private String caseCode;
 
@@ -35,6 +43,12 @@ public class Nomenclature {
     public Department getDepartment() { return department; }
     public void setDepartment(Department department) { this.department = department; }
 
+    public DocType getDocumentType() { return documentType; }
+    public void setDocumentType(DocType documentType) { this.documentType = documentType; }
+
+    public DocCategory getCategory() { return category; }
+    public void setCategory(DocCategory category) { this.category = category; }
+
     public String getCaseCode() { return caseCode; }
     public void setCaseCode(String caseCode) { this.caseCode = caseCode; }
 
@@ -46,5 +60,4 @@ public class Nomenclature {
 
     public Boolean getIsActive() { return isActive; }
     public void setIsActive(Boolean isActive) { this.isActive = isActive; }
-
 }
