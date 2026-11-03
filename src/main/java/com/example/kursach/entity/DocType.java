@@ -3,14 +3,23 @@ package com.example.kursach.entity;
 import jakarta.persistence.*;
 
 @Entity
-@Table(name = "doc_types")
+@Table(name = "doc_types",
+        uniqueConstraints = {
+                @UniqueConstraint(columnNames = {"category_id", "code"}),
+                @UniqueConstraint(columnNames = {"type_id", "category_id"})
+        })
 public class DocType {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "document_type_id")
+    @Column(name = "type_id")
     private Long documentTypeId;
 
-    @Column(name = "code", nullable = false, unique = true, length = 50)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id", nullable = false)
+    private DocCategory category;
+
+    @Column(name = "code", nullable = false, length = 50)
     private String code;
 
     @Column(name = "name", nullable = false, length = 150)
@@ -21,6 +30,9 @@ public class DocType {
 
     public Long getDocumentTypeId() { return documentTypeId; }
     public void setDocumentTypeId(Long documentTypeId) { this.documentTypeId = documentTypeId; }
+
+    public DocCategory getCategory() { return category; }
+    public void setCategory(DocCategory category) { this.category = category; }
 
     public String getCode() { return code; }
     public void setCode(String code) { this.code = code; }

@@ -9,10 +9,6 @@ import java.util.Optional;
 
 @Repository
 public interface DocCategoryRepository extends JpaRepository<DocCategory, Long> {
-    List<DocCategory> findByDocumentTypeDocumentTypeId(Long documentTypeId);
-    List<DocCategory> findByNameContainingIgnoreCase(String namePart);
     List<DocCategory> findByIsActiveTrue();
-
-    Optional<DocCategory> findByDocumentTypeDocumentTypeIdAndCode(Long documentTypeId, String code);
-    boolean existsByDocumentTypeDocumentTypeIdAndCode(Long documentTypeId, String code);
+    Optional<DocCategory> findByCode(String code);
 }

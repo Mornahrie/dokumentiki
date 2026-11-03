@@ -7,10 +7,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Репозиторий истории документа.
- * Методы удаления/изменения намеренно отсутствуют — BR-09, SAF-01.
- */
+
 @Repository
 public interface DocHistoryRepository extends JpaRepository<DocHistory, Long> {
     List<DocHistory> findByDocumentDocumentIdOrderByHistoryIdAsc(Long documentId);
@@ -21,9 +18,9 @@ public interface DocHistoryRepository extends JpaRepository<DocHistory, Long> {
 
     List<DocHistory> findByDocumentDocumentIdAndActionActionId(Long documentId, Long actionId);
 
+    List<DocHistory> findByActionActionId(Long actionId);
+
     Optional<DocHistory> findTopByDocumentDocumentIdOrderByHistoryIdDesc(Long documentId);
 
     long countByUserUserId(Long userId);
-
-    // deleteByDocumentDocumentId() — удалён специально (BR-09 / SAF-01)
 }

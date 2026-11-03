@@ -16,9 +16,9 @@ import java.util.Optional;
 @Repository
 public interface DocumentRepository extends JpaRepository<Document, Long> {
 
+    // === простые derived queries (все поля Document существуют) ===
     List<Document> findByAuthorUserId(Long authorId);
     List<Document> findByCategoryCategoryId(Long categoryId);
-    List<Document> findByNomenclatureNomenclatureId(Long nomenclatureId);
     List<Document> findByDocumentTypeDocumentTypeId(Long documentTypeId);
     List<Document> findByDepartmentDepartmentId(Long departmentId);
     List<Document> findBySectorSectorId(Long sectorId);
@@ -31,22 +31,22 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
     List<Document> findAllByOrderByCreatedAtDesc();
     List<Document> findByCreatedAtBetween(LocalDateTime from, LocalDateTime to);
 
-    List<Document> findByNomenclatureDepartmentDepartmentId(Long departmentId);
-
     Page<Document> findByAuthorUserId(Long authorId, Pageable pageable);
     Page<Document> findByStatus(String status, Pageable pageable);
 
     long countByCategoryCategoryId(Long categoryId);
     long countByStatus(String status);
 
+    // === "Мои документы" по коду КАТЕГОРИИ (родитель) ===
     @Query("SELECT DISTINCT d FROM Document d " +
-            "WHERE d.documentType.code = :typeCode " +
+            "WHERE d.category.code = :categoryCode " +
             "AND (d.author.userId = :userId OR d.department.departmentId = :deptId) " +
             "ORDER BY d.createdAt DESC")
-    List<Document> findMyDocsByTypeCode(@Param("userId") Long userId,
-                                        @Param("deptId") Long deptId,
-                                        @Param("typeCode") String typeCode);
+    List<Document> findMyDocsByCategoryCode(@Param("userId") Long userId,
+                                            @Param("deptId") Long deptId,
+                                            @Param("categoryCode") String categoryCode);
 
+    // === Глобальный поиск ===
     @Query("SELECT d FROM Document d " +
             "WHERE (LOWER(d.title) LIKE LOWER(CONCAT('%', :q, '%')) " +
             "   OR LOWER(d.content) LIKE LOWER(CONCAT('%', :q, '%'))) " +
@@ -59,32 +59,37 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
                                     @Param("deptId") Long deptId,
                                     Pageable pageable);
 
+    // === Регистрация: подсчёт по делу (caseId) ===
     @Query("SELECT COUNT(d) FROM Document d " +
             "WHERE d.department.departmentId = :deptId " +
-            "AND d.nomenclature.nomenclatureId = :nomId " +
+            "AND d.nomenclature.caseId = :caseId " +
+            "AND d.registrationNumber IS NOT NULL")
+    long countRegistrationsByDeptAndCase(@Param("deptId") Long deptId,
+                                         @Param("caseId") Long caseId);
+
+    // === Регистрация: старая версия с годом — через registrationDate ===
+    @Query("SELECT COUNT(d) FROM Document d " +
+            "WHERE d.department.departmentId = :deptId " +
+            "AND d.nomenclature.caseId = :caseId " +
             "AND d.registrationNumber IS NOT NULL " +
             "AND YEAR(d.registrationDate) = :year")
     long countRegistrationsInYear(@Param("deptId") Long deptId,
-                                  @Param("nomId") Long nomId,
+                                  @Param("caseId") Long caseId,
                                   @Param("year") int year);
 
+    @Query("SELECT MAX(d.registrationDate) FROM Document d " +
+            "WHERE d.department.departmentId = :deptId " +
+            "AND d.nomenclature.caseId = :caseId " +
+            "AND d.registrationNumber IS NOT NULL")
+    Optional<LocalDate> findLastRegistrationDate(@Param("deptId") Long deptId,
+                                                 @Param("caseId") Long caseId);
+
+    // === Документы, где я участник маршрута (для аналитики) ===
     @Query("SELECT DISTINCT d FROM Document d " +
             "JOIN DocRoute r ON r.document = d " +
             "WHERE r.assignedUser.userId = :userId " +
             "ORDER BY d.createdAt DESC")
     List<Document> findMyDocs(@Param("userId") Long userId);
 
-    @Query("SELECT COUNT(d) FROM Document d " +
-            "WHERE d.department.departmentId = :deptId " +
-            "AND d.nomenclature.nomenclatureId = :nomId " +
-            "AND d.registrationNumber IS NOT NULL")
-    long countRegistrationsByDeptAndCase(@Param("deptId") Long deptId,
-                                         @Param("nomId") Long nomId);
-
-    @Query("SELECT MAX(d.registrationDate) FROM Document d " +
-            "WHERE d.department.departmentId = :deptId " +
-            "AND d.nomenclature.nomenclatureId = :nomId " +
-            "AND d.registrationNumber IS NOT NULL")
-    Optional<LocalDate> findLastRegistrationDate(@Param("deptId") Long deptId,
-                                                 @Param("nomId") Long nomId);
+    List<Document> findByNomenclatureCaseId(Long caseId);
 }

@@ -20,7 +20,7 @@ public class UserPermission {
     private Permission permission;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "document_type_id")
+    @JoinColumn(name = "type_id")
     private DocType documentType;
 
     @ManyToOne(fetch = FetchType.LAZY)

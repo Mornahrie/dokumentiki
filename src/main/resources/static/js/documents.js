@@ -19,7 +19,8 @@ var ACTIONS_MAP = {
 };
 
 var currentDocData = null;
-var currentDocTypeCode = null;
+// В новой схеме БД "ADMINISTRATIVE" и "ORGANIZATIONAL" — это КОДЫ КАТЕГОРИЙ (doc_categories)
+var currentDocCategoryCode = null;
 var pendingNewFile = null;
 
 async function loadTasks(taskCode) {
@@ -44,10 +45,11 @@ async function loadTasks(taskCode) {
     }
 }
 
-async function loadDocuments(typeCode) {
+async function loadDocuments(categoryCode) {
     document.getElementById('tableContainer').innerHTML = '<div style="padding:32px;text-align:center;">Загрузка...</div>';
     try {
-        var resp = await fetch('/api/documents/my?type=' + encodeURIComponent(typeCode),
+        // бэкенд: /api/documents/my?type=... → findMyDocsByCategoryCode
+        var resp = await fetch('/api/documents/my?type=' + encodeURIComponent(categoryCode),
             { headers: { 'Authorization': 'Bearer ' + token } });
         if (!resp.ok) {
             var err = await resp.json().catch(function () { return {}; });
@@ -82,6 +84,16 @@ async function openDocumentView(id) {
     document.getElementById('mv_title').disabled = true;
     document.getElementById('mv_content').disabled = true;
 
+    // Автоматически отмечаем прочтение задачи текущего исполнителя.
+    // Если у пользователя есть задача в статусе «Не прочитано» (PENDING)
+    // и предыдущие этапы завершены — она переходит в «В процессе» (IN_PROGRESS).
+    try {
+        await fetch('/api/documents/' + id + '/mark-read', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+    } catch (_) { /* не критично */ }
+
     var fromTasks = currentSection && currentSection.type === 'task';
     switchDocTab(fromTasks ? 'route' : 'doc');
 
@@ -96,7 +108,8 @@ async function openDocumentView(id) {
 
         var doc = data.document;
         currentDocData = doc;
-        currentDocTypeCode = doc.documentType ? doc.documentType.code : null;
+        // код категории — для определения ветки REVIEW → EXECUTE и т.п.
+        currentDocCategoryCode = doc.category ? doc.category.code : null;
         var files = data.files || [];
 
         currentDocAuthor = doc.author ? (doc.author.lastName + ' ' + (doc.author.firstName ? doc.author.firstName.charAt(0) : '') + '.' +
@@ -107,7 +120,9 @@ async function openDocumentView(id) {
         document.getElementById('mv_content').value = doc.content || '—';
         document.getElementById('mv_type').value = doc.documentType ? doc.documentType.name : '—';
         document.getElementById('mv_category').value = doc.category ? doc.category.name : '—';
-        document.getElementById('mv_nomenclature').value = doc.nomenclature ? doc.nomenclature.caseCode + ' — ' + doc.nomenclature.title : '—';
+        document.getElementById('mv_nomenclature').value = doc.nomenclature
+            ? (doc.nomenclature.caseCode + ' — ' + doc.nomenclature.title)
+            : '—';
         document.getElementById('mv_reg').value = doc.registrationNumber || 'Не зарегистрирован';
         document.getElementById('mv_status').value = STATUS_MAP[doc.status] || doc.status;
         document.getElementById('mv_author').value = doc.author ? (doc.author.lastName + ' ' + doc.author.firstName + ' ' + (doc.author.middleName || '')) : '—';
@@ -173,9 +188,9 @@ async function openDocumentView(id) {
 
                     var taskActionsHtml = '';
                     if (isMyActiveTask) {
-                        // Для REVIEW распорядительного документа показываем "Рассмотреть" с выбором исполнителя
+                        // Для REVIEW распорядительного документа — "Рассмотреть" с выбором исполнителя
                         var mainBtnLabel = r.action.name;
-                        if (r.action.code === 'REVIEW' && currentDocTypeCode === 'ADMINISTRATIVE') {
+                        if (r.action.code === 'REVIEW' && currentDocCategoryCode === 'ADMINISTRATIVE') {
                             mainBtnLabel = 'Рассмотреть (назначить исполнителя)';
                         }
                         taskActionsHtml =
@@ -212,7 +227,7 @@ async function openDocumentView(id) {
         document.getElementById('routeTimeline').innerHTML = '<div class="muted" style="text-align:center;color:#b00020;">Ошибка загрузки маршрута</div>';
     }
 
-    // Загрузка истории в формате ТАБЛИЦЫ
+    // Загрузка истории
     try {
         var respH = await fetch('/api/documents/' + id + '/history', { headers: { 'Authorization': 'Bearer ' + token } });
         var tbody = document.getElementById('historyTableBody');
@@ -324,7 +339,7 @@ async function saveDocChanges() {
 }
 
 // ============================================================
-// ДОБАВЛЕНИЕ НОВОЙ ВЕРСИИ ФАЙЛА (при редактировании)
+// ДОБАВЛЕНИЕ НОВОЙ ВЕРСИИ ФАЙЛА
 // ============================================================
 function addFileVersion() {
     var input = document.createElement('input');
@@ -352,7 +367,7 @@ function addFileVersion() {
 }
 
 // ============================================================
-// РЕГИСТРАЦИЯ (модальное окно, дата задним числом)
+// РЕГИСТРАЦИЯ
 // ============================================================
 async function openRegisterModal() {
     try {
@@ -400,7 +415,6 @@ async function submitRegistration() {
         if (!resp.ok) throw new Error(data.error || 'Ошибка регистрации');
 
         closeRegisterModal();
-        // Показываем результат в модалке успеха
         alert('Документ зарегистрирован.\nНомер: ' + data.registrationNumber + '\nДата: ' + data.registrationDate);
         openDocumentView(currentDocId);
     } catch (e) {
@@ -413,6 +427,7 @@ function registerDocument() { openRegisterModal(); }
 
 // ============================================================
 // ДЕЙСТВИЯ С ЗАДАЧЕЙ (включая REVIEW → EXECUTE)
+// В новой схеме "ADMINISTRATIVE" — это код КАТЕГОРИИ (родителя).
 // ============================================================
 async function openActionModal(routeId, actionCode, actionName) {
     if (actionCode === 'REGISTER') { openRegisterModal(); return; }
@@ -429,17 +444,17 @@ async function openActionModal(routeId, actionCode, actionName) {
     var deadlineInput = document.getElementById('actionDeadline');
     deadlineGroup.style.display = 'none';
 
-    // REVIEW для распорядительного → нужен исполнитель + срок
+    // REVIEW для распорядительной КАТЕГОРИИ → нужен исполнитель + срок
     var needAssignee = (actionCode === 'REDIRECT')
-        || (actionCode === 'REVIEW' && currentDocTypeCode === 'ADMINISTRATIVE');
+        || (actionCode === 'REVIEW' && currentDocCategoryCode === 'ADMINISTRATIVE');
 
     if (needAssignee) {
         userGroup.style.display = 'flex';
         userSelect.innerHTML = '<option value="">Загрузка...</option>';
 
-        // Для REDIRECT берём пользователей с полномочием на текущий этап (не исполнение).
-        // Для REVIEW → EXECUTE берём пользователей с полномочием EXECUTE.
-        var permAction = (actionCode === 'REDIRECT') ? (currentDocData && currentDocData.currentRouteAction || 'APPROVE') : 'EXECUTE';
+        var permAction = (actionCode === 'REDIRECT')
+            ? (currentDocData && currentDocData.currentRouteAction || 'APPROVE')
+            : 'EXECUTE';
 
         try {
             var resp = await fetch('/api/documents/eligible-users', {
@@ -455,7 +470,6 @@ async function openActionModal(routeId, actionCode, actionName) {
             });
             var users = await resp.json();
 
-            // Для REDIRECT — фильтруем себя
             if (actionCode === 'REDIRECT') {
                 users = users.filter(function (u) { return u.userId !== currentUserId; });
             }
@@ -465,15 +479,17 @@ async function openActionModal(routeId, actionCode, actionName) {
             } else {
                 userSelect.innerHTML = '<option value="">Выберите сотрудника</option>' +
                     users.map(function (u) {
-                        return '<option value="' + u.userId + '">' + escapeHtml(u.lastName) + ' ' + escapeHtml(u.firstName) + ' ' + escapeHtml(u.middleName || '') + ' (' + escapeHtml(u.tabNumber) + ')</option>';
+                        return '<option value="' + u.userId + '">' +
+                            escapeHtml(u.lastName) + ' ' + escapeHtml(u.firstName) + ' ' +
+                            escapeHtml(u.middleName || '') + ' (' + escapeHtml(u.tabNumber) + ')' +
+                            '</option>';
                     }).join('');
             }
         } catch (_) {
             userSelect.innerHTML = '<option value="">Ошибка загрузки</option>';
         }
 
-        // Для REVIEW → EXECUTE добавляем поле срока
-        if (actionCode === 'REVIEW' && currentDocTypeCode === 'ADMINISTRATIVE') {
+        if (actionCode === 'REVIEW' && currentDocCategoryCode === 'ADMINISTRATIVE') {
             deadlineGroup.style.display = 'flex';
             var d = new Date();
             d.setDate(d.getDate() + 7);
@@ -509,12 +525,12 @@ async function submitTaskAction() {
     };
 
     var needAssignee = (currentActionCode === 'REDIRECT')
-        || (currentActionCode === 'REVIEW' && currentDocTypeCode === 'ADMINISTRATIVE');
+        || (currentActionCode === 'REVIEW' && currentDocCategoryCode === 'ADMINISTRATIVE');
     if (needAssignee) {
         if (!newAssigneeId) { alert('Выберите сотрудника.'); return; }
         payload.newAssigneeId = newAssigneeId;
     }
-    if (currentActionCode === 'REVIEW' && currentDocTypeCode === 'ADMINISTRATIVE') {
+    if (currentActionCode === 'REVIEW' && currentDocCategoryCode === 'ADMINISTRATIVE') {
         if (!deadline) { alert('Укажите срок исполнения.'); return; }
         payload.deadline = deadline + ':00';
     }

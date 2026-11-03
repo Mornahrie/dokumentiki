@@ -15,12 +15,9 @@ import java.util.Optional;
 public interface NomenclatureRepository extends JpaRepository<Nomenclature, Long> {
     List<Nomenclature> findByDepartmentDepartmentId(Long departmentId);
     List<Nomenclature> findByIsActiveTrue();
+    List<Nomenclature> findByDepartmentDepartmentIdAndYear(Long departmentId, Integer year);
 
-    Optional<Nomenclature> findByCaseCode(String caseCode);
-    Optional<Nomenclature> findByDepartmentDepartmentIdAndCaseCode(Long departmentId, String caseCode);
-    boolean existsByDepartmentDepartmentIdAndCaseCode(Long departmentId, String caseCode);
-
-    List<Nomenclature> findByTitleContainingIgnoreCase(String titlePart);
+    Optional<Nomenclature> findFirstByDepartmentDepartmentIdAndYear(Long departmentId, Integer year);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT n FROM Nomenclature n WHERE n.nomenclatureId = :id")

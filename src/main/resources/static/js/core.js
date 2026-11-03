@@ -4,23 +4,30 @@ var isAdmin = roleCode === 'ADMIN';
 var currentUserId = parseInt(localStorage.getItem('userId'));
 if (!token) window.location.href = '/login';
 
+// ============================================================
+// СТАТУСЫ ДОКУМЕНТА (по ТЗ, п. 3.14)
+// ============================================================
 var STATUS_MAP = {
-    'DRAFT': 'Черновик',
-    'IN_PROGRESS': 'В работе',
-    'COMPLETED': 'Выполнен',
-    'REJECTED': 'Отклонен',
-    'REVISION': 'На доработке',
-    'PENDING': 'В ожидании',
-    'ARCHIVED': 'В архиве'
+    'DRAFT':       'Черновик',
+    'IN_PROGRESS': 'В процессе',
+    'REVISION':    'Пересмотр',
+    'COMPLETED':   'Выполнен',
+    'ARCHIVED':    'В архиве',
+    // устаревшие / защитные значения
+    'REJECTED':    'Отклонён',
+    'PENDING':     'Не прочитано'
 };
 
+// ============================================================
+// СТАТУСЫ ЭТАПА МАРШРУТА (по ТЗ, п. 3.14)
+// ============================================================
 var ROUTE_STATUS_MAP = {
-    'PENDING': 'К выполнению',
-    'IN_PROGRESS': 'В работе',
-    'COMPLETED': 'Выполнено',
-    'REJECTED': 'Отклонено',
-    'WAITING': 'Ожидает',
-    'CANCELLED': 'Отменено'
+    'PENDING':     'Не прочитано',
+    'WAITING':     'Ожидает',
+    'IN_PROGRESS': 'В процессе',
+    'COMPLETED':   'Выполнен',
+    'REJECTED':    'Отклонён',
+    'CANCELLED':   'Отменён'
 };
 
 var TASKS = [
@@ -32,21 +39,14 @@ var TASKS = [
     { code: 'EXECUTION',    name: 'На исполнении',   action: 'EXECUTE' }
 ];
 
-// Теперь это КАТЕГОРИИ (в БД это doc_types)
-var CATEGORIES = [
-    { code: 'ORGANIZATIONAL', name: 'Организационные документы' },
-    { code: 'ADMINISTRATIVE', name: 'Распорядительные документы' },
-    { code: 'INFO_REFERENCE', name: 'Информационно-справочные документы' },
-    { code: 'CONTRACTUAL',    name: 'Договорные документы' },
-    { code: 'PROTOCOLS',      name: 'Протоколы' }
-];
+// ДИНАМИЧЕСКИЕ КАТЕГОРИИ — заполняются loadCategories() из /api/ref/doc-categories
+var CATEGORIES = [];
 
 var ADMIN_SECTIONS = [
     { code: 'REFERENCE',   name: 'Управление справочниками' },
     { code: 'PERMISSIONS', name: 'Управление полномочиями' }
 ];
 
-// ИСПРАВЛЕНЫ НАЗВАНИЯ: doc-types = Категории, doc-categories = Типы
 var REF_TYPES = [
     { code: 'departments',    name: 'Подразделения' },
     { code: 'sectors',        name: 'Секторы' },
@@ -71,15 +71,21 @@ var ALL_DOC_COLUMNS = [
 ];
 
 var ALL_TASK_COLUMNS = [
-    { key: 'title',      label: 'Содержание',  defaultVisible: true },
-    { key: 'deadline',   label: 'Срок',        fmt: v => v ? new Date(v).toLocaleDateString('ru-RU') : '—', defaultVisible: true },
-    { key: 'authorName', label: 'Отправитель', defaultVisible: true }
+    { key: 'title',       label: 'Содержание',     defaultVisible: true },
+    { key: 'routeStatus', label: 'Статус задачи',  fmt: v => ROUTE_STATUS_MAP[v] || v || '—', defaultVisible: true },
+    { key: 'deadline',    label: 'Срок',           fmt: v => v ? new Date(v).toLocaleDateString('ru-RU') : '—', defaultVisible: true },
+    { key: 'authorName',  label: 'Отправитель',    defaultVisible: true }
 ];
 
 var currentSection = null;
 var currentData = [];
 var currentRefType = 'departments';
+
+// Контекст управления полномочиями (сохранение / позиции)
 var currentPermissionUserId = null;
+var currentPositionId       = null;
+var currentPermissionMode   = 'users';   // 'users' | 'positions'
+
 var activeFilters = {};
 var sortConfig = { key: null, direction: 'asc' };
 var pageSize = 50;
@@ -113,7 +119,29 @@ function logout() {
     window.location.href = '/login';
 }
 
-document.addEventListener('DOMContentLoaded', function () {
+/**
+ * Загружает активные категории документов из БД.
+ * Заполняет глобальный CATEGORIES (code + name).
+ */
+async function loadCategories() {
+    try {
+        var resp = await fetch('/api/ref/doc-categories', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var data = await resp.json();
+        CATEGORIES = (data || [])
+            .filter(c => c.isActive !== false)
+            .map(function (c) {
+                return { code: c.code, name: c.name, categoryId: c.categoryId };
+            });
+    } catch (e) {
+        console.error('Не удалось загрузить категории документов:', e);
+        CATEGORIES = [];
+    }
+}
+
+document.addEventListener('DOMContentLoaded', async function () {
     var userNameEl = document.getElementById('userName');
     var userRoleEl = document.getElementById('userRole');
     if (userNameEl) userNameEl.textContent = localStorage.getItem('fullName') || 'Пользователь';
@@ -124,7 +152,9 @@ document.addEventListener('DOMContentLoaded', function () {
         .then(data => { allUsers = data.filter(u => u.isActive); })
         .catch(e => console.error(e));
 
+    await loadCategories();
     renderSidebar();
+
     var defaultSection = isAdmin
         ? { type: 'admin', code: 'REFERENCE' }
         : { type: 'task', code: 'EXECUTION' };

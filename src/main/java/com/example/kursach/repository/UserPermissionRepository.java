@@ -12,6 +12,11 @@ public interface UserPermissionRepository extends JpaRepository<UserPermission, 
     List<UserPermission> findByUserUserIdAndIsAllowedTrue(Long userId);
     List<UserPermission> findByPermissionPermissionId(Long permissionId);
 
+    List<UserPermission> findByDepartmentDepartmentId(Long departmentId);
+    List<UserPermission> findBySectorSectorId(Long sectorId);
+    List<UserPermission> findByCategoryCategoryId(Long categoryId);
+    List<UserPermission> findByDocumentTypeDocumentTypeId(Long documentTypeId);
+
     boolean existsByUserUserIdAndPermissionPermissionId(Long userId, Long permissionId);
 
     void deleteByUserUserId(Long userId);

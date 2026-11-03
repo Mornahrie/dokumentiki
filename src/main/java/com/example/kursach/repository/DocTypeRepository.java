@@ -14,4 +14,6 @@ public interface DocTypeRepository extends JpaRepository<DocType, Long> {
     boolean existsByCode(String code);
 
     List<DocType> findByIsActiveTrue();
+    List<DocType> findByCategoryCategoryId(Long categoryId);
+    List<DocType> findByCategoryCategoryIdAndIsActiveTrue(Long categoryId);
 }

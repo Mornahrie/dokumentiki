@@ -4,12 +4,12 @@ import com.example.kursach.entity.*;
 import com.example.kursach.repository.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
@@ -30,6 +30,7 @@ public class AdminController {
     private final DepartmentRepository departmentRepository;
     private final SectorRepository sectorRepository;
     private final NomenclatureRepository nomenclatureRepository;
+    private final NomenclatureCaseRepository nomenclatureCaseRepository;
     private final DocTypeRepository docTypeRepository;
     private final DocCategoryRepository docCategoryRepository;
     private final PositionRepository positionRepository;
@@ -38,21 +39,33 @@ public class AdminController {
     private final PosPermissionRepository posPermissionRepository;
     private final DocActionRepository docActionRepository;
     private final RouteStageRepository routeStageRepository;
+    private final DocumentRepository documentRepository;
+    private final DocRouteRepository docRouteRepository;
+    private final DocHistoryRepository docHistoryRepository;
+    private final DocFileRepository docFileRepository;
 
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
     public AdminController(UserRepository userRepository, BaseRoleRepository baseRoleRepository,
                            DepartmentRepository departmentRepository, SectorRepository sectorRepository,
-                           NomenclatureRepository nomenclatureRepository, DocTypeRepository docTypeRepository,
-                           DocCategoryRepository docCategoryRepository, PositionRepository positionRepository,
-                           PermissionRepository permissionRepository, UserPermissionRepository userPermissionRepository,
-                           PosPermissionRepository posPermissionRepository, DocActionRepository docActionRepository,
-                           RouteStageRepository routeStageRepository) {
+                           NomenclatureRepository nomenclatureRepository,
+                           NomenclatureCaseRepository nomenclatureCaseRepository,
+                           DocTypeRepository docTypeRepository, DocCategoryRepository docCategoryRepository,
+                           PositionRepository positionRepository, PermissionRepository permissionRepository,
+                           UserPermissionRepository userPermissionRepository,
+                           PosPermissionRepository posPermissionRepository,
+                           DocActionRepository docActionRepository,
+                           RouteStageRepository routeStageRepository,
+                           DocumentRepository documentRepository,
+                           DocRouteRepository docRouteRepository,
+                           DocHistoryRepository docHistoryRepository,
+                           DocFileRepository docFileRepository) {
         this.userRepository = userRepository;
         this.baseRoleRepository = baseRoleRepository;
         this.departmentRepository = departmentRepository;
         this.sectorRepository = sectorRepository;
         this.nomenclatureRepository = nomenclatureRepository;
+        this.nomenclatureCaseRepository = nomenclatureCaseRepository;
         this.docTypeRepository = docTypeRepository;
         this.docCategoryRepository = docCategoryRepository;
         this.positionRepository = positionRepository;
@@ -61,6 +74,10 @@ public class AdminController {
         this.posPermissionRepository = posPermissionRepository;
         this.docActionRepository = docActionRepository;
         this.routeStageRepository = routeStageRepository;
+        this.documentRepository = documentRepository;
+        this.docRouteRepository = docRouteRepository;
+        this.docHistoryRepository = docHistoryRepository;
+        this.docFileRepository = docFileRepository;
     }
 
     // ================= USERS =================
@@ -117,13 +134,26 @@ public class AdminController {
         return ResponseEntity.ok(user);
     }
 
+    /**
+     * Удаление пользователя: если есть связанные данные — деактивируем, иначе удаляем полностью.
+     */
     @DeleteMapping("/users/{id}")
     @Transactional
-    public ResponseEntity<?> softDeleteUser(@PathVariable Long id) {
+    public ResponseEntity<?> deleteUser(@PathVariable Long id) {
         User user = userRepository.findById(id).orElseThrow();
-        user.setIsActive(false);
-        userRepository.save(user);
-        return ResponseEntity.ok(Map.of("message", "Пользователь исключен"));
+        boolean hasRelated =
+                !documentRepository.findByAuthorUserId(id).isEmpty()
+                        || !docRouteRepository.findByAssignedUserUserId(id).isEmpty()
+                        || !docHistoryRepository.findByUserUserId(id).isEmpty()
+                        || !userPermissionRepository.findByUserUserId(id).isEmpty()
+                        || !docFileRepository.findByUploadedByUserId(id).isEmpty();
+        if (hasRelated) {
+            user.setIsActive(false);
+            userRepository.save(user);
+            return ResponseEntity.ok(Map.of("message", "Пользователь деактивирован: есть связанные данные"));
+        }
+        userRepository.delete(user);
+        return ResponseEntity.ok(Map.of("message", "Пользователь удалён полностью"));
     }
 
     // ================= USER PERMISSIONS =================
@@ -166,6 +196,13 @@ public class AdminController {
         DocCategory category = resolveCategory(body.get("categoryId"));
         Department department = resolveDepartment(body.get("departmentId"));
         Sector sector = resolveSector(body.get("sectorId"));
+
+        if (docType != null && category != null
+                && (docType.getCategory() == null
+                || !docType.getCategory().getCategoryId().equals(category.getCategoryId()))) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Тип не относится к выбранной категории"));
+        }
 
         boolean duplicate = userPermissionRepository.findByUserUserId(id).stream().anyMatch(p ->
                 p.getPermission().getPermissionId().equals(perm.getPermissionId())
@@ -245,6 +282,13 @@ public class AdminController {
         Department department = resolveDepartment(body.get("departmentId"));
         Sector sector = resolveSector(body.get("sectorId"));
 
+        if (docType != null && category != null
+                && (docType.getCategory() == null
+                || !docType.getCategory().getCategoryId().equals(category.getCategoryId()))) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Тип не относится к выбранной категории"));
+        }
+
         boolean duplicate = posPermissionRepository.findByPositionPositionId(id).stream().anyMatch(p ->
                 p.getPermission().getPermissionId().equals(perm.getPermissionId())
                         && Objects.equals(extractId(p.getDocumentType()), extractId(docType))
@@ -276,59 +320,89 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Полномочие отозвано"));
     }
 
-    // ================= PERMISSIONS / POSITIONS / ROLES =================
+    // ================= SIMPLE LISTS =================
     @GetMapping("/permissions")    public ResponseEntity<?> getAllPermissions() { return ResponseEntity.ok(permissionRepository.findAll()); }
     @GetMapping("/positions")      public ResponseEntity<?> getPositions()      { return ResponseEntity.ok(positionRepository.findAll()); }
     @GetMapping("/base-roles")     public ResponseEntity<?> getBaseRoles()      { return ResponseEntity.ok(baseRoleRepository.findAll()); }
+    @GetMapping("/departments")    public ResponseEntity<?> getDepartments()    { return ResponseEntity.ok(departmentRepository.findAll()); }
+    @GetMapping("/sectors")        public ResponseEntity<?> getSectors()        { return ResponseEntity.ok(sectorRepository.findAllByOrderByNameAsc()); }
+    @GetMapping("/doc-actions")    public ResponseEntity<?> getDocActions()     { return ResponseEntity.ok(docActionRepository.findAll()); }
+    @GetMapping("/route-stages")   public ResponseEntity<?> getRouteStages()    { return ResponseEntity.ok(routeStageRepository.findAll()); }
 
-    // ================= СПРАВОЧНИКИ =================
-    @GetMapping("/departments")    public ResponseEntity<?> getDepartments()   { return ResponseEntity.ok(departmentRepository.findAll()); }
-    @GetMapping("/sectors")        public ResponseEntity<?> getSectors()       { return ResponseEntity.ok(sectorRepository.findAllByOrderByNameAsc()); }
-    @GetMapping("/doc-types")      public ResponseEntity<?> getDocTypes()      { return ResponseEntity.ok(docTypeRepository.findAll()); }
-    @GetMapping("/doc-categories") public ResponseEntity<?> getDocCategories() { return ResponseEntity.ok(docCategoryRepository.findAll()); }
-    @GetMapping("/doc-actions")    public ResponseEntity<?> getDocActions()    { return ResponseEntity.ok(docActionRepository.findAll()); }
-    @GetMapping("/route-stages")   public ResponseEntity<?> getRouteStages()   { return ResponseEntity.ok(routeStageRepository.findAll()); }
-
-    /**
-     * Номенклатуры с обязательными полями documentType и category.
-     */
-    @GetMapping("/nomenclatures")
+    @GetMapping("/doc-categories")
     @Transactional(readOnly = true)
-    public ResponseEntity<?> getNomenclatures() {
-        List<Map<String, Object>> result = nomenclatureRepository.findAll().stream().map(n -> {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("nomenclatureId", n.getNomenclatureId());
-            m.put("caseCode", n.getCaseCode());
-            m.put("title", n.getTitle());
-            m.put("retentionPeriod", n.getRetentionPeriod());
-            m.put("isActive", n.getIsActive());
+    public ResponseEntity<?> getDocCategories() {
+        return ResponseEntity.ok(docCategoryRepository.findAll());
+    }
 
-            if (n.getDepartment() != null) {
-                Map<String, Object> dept = new LinkedHashMap<>();
-                dept.put("departmentId", n.getDepartment().getDepartmentId());
-                dept.put("code", n.getDepartment().getCode());
-                dept.put("name", n.getDepartment().getName());
-                m.put("department", dept);
-            }
-            if (n.getDocumentType() != null) {
-                Map<String, Object> t = new LinkedHashMap<>();
-                t.put("documentTypeId", n.getDocumentType().getDocumentTypeId());
-                t.put("code", n.getDocumentType().getCode());
-                t.put("name", n.getDocumentType().getName());
-                m.put("documentType", t);
-            }
-            if (n.getCategory() != null) {
-                Map<String, Object> c = new LinkedHashMap<>();
-                c.put("categoryId", n.getCategory().getCategoryId());
-                c.put("code", n.getCategory().getCode());
-                c.put("name", n.getCategory().getName());
-                m.put("category", c);
+    @GetMapping("/doc-types")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> getDocTypes() {
+        List<Map<String, Object>> result = docTypeRepository.findAll().stream().map(t -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("documentTypeId", t.getDocumentTypeId());
+            m.put("code", t.getCode());
+            m.put("name", t.getName());
+            m.put("isActive", t.getIsActive());
+            if (t.getCategory() != null) {
+                Map<String, Object> cat = new LinkedHashMap<>();
+                cat.put("categoryId", t.getCategory().getCategoryId());
+                cat.put("code", t.getCategory().getCode());
+                cat.put("name", t.getCategory().getName());
+                m.put("category", cat);
             }
             return m;
         }).toList();
         return ResponseEntity.ok(result);
     }
 
+    @GetMapping("/nomenclatures")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> getNomenclatures() {
+        List<Map<String, Object>> result = nomenclatureCaseRepository.findAll().stream().map(c -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("nomenclatureId", c.getCaseId());
+            m.put("caseId", c.getCaseId());
+            m.put("caseCode", c.getCaseCode());
+            m.put("title", c.getTitle());
+            m.put("retentionPeriod", c.getRetentionPeriod());
+            m.put("isActive", c.getIsActive());
+
+            if (c.getNomenclature() != null) {
+                Map<String, Object> nom = new LinkedHashMap<>();
+                nom.put("nomenclatureId", c.getNomenclature().getNomenclatureId());
+                nom.put("name", c.getNomenclature().getName());
+                nom.put("year", c.getNomenclature().getYear());
+                m.put("nomenclature", nom);
+
+                if (c.getNomenclature().getDepartment() != null) {
+                    Map<String, Object> dept = new LinkedHashMap<>();
+                    dept.put("departmentId", c.getNomenclature().getDepartment().getDepartmentId());
+                    dept.put("code", c.getNomenclature().getDepartment().getCode());
+                    dept.put("name", c.getNomenclature().getDepartment().getName());
+                    m.put("department", dept);
+                }
+            }
+            if (c.getCategory() != null) {
+                Map<String, Object> cat = new LinkedHashMap<>();
+                cat.put("categoryId", c.getCategory().getCategoryId());
+                cat.put("code", c.getCategory().getCode());
+                cat.put("name", c.getCategory().getName());
+                m.put("category", cat);
+            }
+            if (c.getType() != null) {
+                Map<String, Object> t = new LinkedHashMap<>();
+                t.put("documentTypeId", c.getType().getDocumentTypeId());
+                t.put("code", c.getType().getCode());
+                t.put("name", c.getType().getName());
+                m.put("type", t);
+            }
+            return m;
+        }).toList();
+        return ResponseEntity.ok(result);
+    }
+
+    // ================= DEPARTMENTS CRUD =================
     @PostMapping("/departments")
     public ResponseEntity<?> createDepartment(@RequestBody Map<String, Object> b) {
         Department d = new Department();
@@ -345,13 +419,26 @@ public class AdminController {
         return ResponseEntity.ok(departmentRepository.save(d));
     }
     @DeleteMapping("/departments/{id}")
+    @Transactional
     public ResponseEntity<?> deleteDepartment(@PathVariable Long id) {
         Department d = departmentRepository.findById(id).orElseThrow();
-        d.setIsActive(false);
-        departmentRepository.save(d);
-        return ResponseEntity.ok(Map.of("message", "Удалено"));
+        boolean hasRelated =
+                !userRepository.findByDepartmentDepartmentId(id).isEmpty()
+                        || !sectorRepository.findByDepartmentDepartmentId(id).isEmpty()
+                        || !nomenclatureRepository.findByDepartmentDepartmentId(id).isEmpty()
+                        || !documentRepository.findByDepartmentDepartmentId(id).isEmpty()
+                        || !posPermissionRepository.findByDepartmentDepartmentId(id).isEmpty()
+                        || !userPermissionRepository.findByDepartmentDepartmentId(id).isEmpty();
+        if (hasRelated) {
+            d.setIsActive(false);
+            departmentRepository.save(d);
+            return ResponseEntity.ok(Map.of("message", "Подразделение деактивировано: есть связанные данные"));
+        }
+        departmentRepository.delete(d);
+        return ResponseEntity.ok(Map.of("message", "Подразделение удалено полностью"));
     }
 
+    // ================= SECTORS CRUD =================
     @PostMapping("/sectors")
     public ResponseEntity<?> createSector(@RequestBody Map<String, Object> b) {
         Sector s = new Sector();
@@ -371,108 +458,145 @@ public class AdminController {
         return ResponseEntity.ok(sectorRepository.save(s));
     }
     @DeleteMapping("/sectors/{id}")
+    @Transactional
     public ResponseEntity<?> deleteSector(@PathVariable Long id) {
         Sector s = sectorRepository.findById(id).orElseThrow();
-        s.setIsActive(false);
-        sectorRepository.save(s);
-        return ResponseEntity.ok(Map.of("message", "Удалено"));
+        boolean hasRelated =
+                !userRepository.findBySectorSectorId(id).isEmpty()
+                        || !documentRepository.findBySectorSectorId(id).isEmpty()
+                        || !posPermissionRepository.findBySectorSectorId(id).isEmpty()
+                        || !userPermissionRepository.findBySectorSectorId(id).isEmpty();
+        if (hasRelated) {
+            s.setIsActive(false);
+            sectorRepository.save(s);
+            return ResponseEntity.ok(Map.of("message", "Сектор деактивирован: есть связанные данные"));
+        }
+        sectorRepository.delete(s);
+        return ResponseEntity.ok(Map.of("message", "Сектор удалён полностью"));
     }
 
+    // ================= NOMENCLATURES CRUD =================
     @PostMapping("/nomenclatures")
+    @Transactional
     public ResponseEntity<?> createNomenclature(@RequestBody Map<String, Object> b) {
-        Long categoryId = asLong(b.get("documentTypeId"));
-        if (categoryId == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Категория обязательна"));
+        Long departmentId = asLong(b.get("departmentId"));
+        Long categoryId   = asLong(b.get("categoryId"));
+        Long typeId       = asLong(b.get("typeId"));
+
+        if (departmentId == null) return ResponseEntity.badRequest()
+                .body(Map.of("error", "Подразделение обязательно"));
+        if (categoryId == null) return ResponseEntity.badRequest()
+                .body(Map.of("error", "Категория обязательна"));
+        if (typeId == null) return ResponseEntity.badRequest()
+                .body(Map.of("error", "Тип документа обязателен"));
+
+        Department dept = departmentRepository.findById(departmentId)
+                .orElseThrow(() -> new IllegalArgumentException("Подразделение не найдено"));
+        DocCategory cat = docCategoryRepository.findById(categoryId)
+                .orElseThrow(() -> new IllegalArgumentException("Категория не найдена"));
+        DocType type = docTypeRepository.findById(typeId)
+                .orElseThrow(() -> new IllegalArgumentException("Тип не найден"));
+
+        if (type.getCategory() == null
+                || !type.getCategory().getCategoryId().equals(cat.getCategoryId())) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Тип не относится к выбранной категории"));
         }
-        Long typeId = asLong(b.get("categoryId"));
-        if (typeId == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Тип документа обязателен"));
+
+        int year = LocalDate.now().getYear();
+        Nomenclature header = nomenclatureRepository
+                .findFirstByDepartmentDepartmentIdAndYear(departmentId, year)
+                .orElseGet(() -> {
+                    Nomenclature n = new Nomenclature();
+                    n.setDepartment(dept);
+                    n.setName("Номенклатура дел на " + year + " год");
+                    n.setYear(year);
+                    n.setIsActive(true);
+                    return nomenclatureRepository.save(n);
+                });
+
+        NomenclatureCase c = new NomenclatureCase();
+        c.setNomenclature(header);
+        c.setCategory(cat);
+        c.setType(type);
+        c.setCaseCode((String) b.get("caseCode"));
+        c.setTitle((String) b.get("title"));
+        if (b.get("retentionPeriod") != null && !b.get("retentionPeriod").toString().isBlank()) {
+            c.setRetentionPeriod(Integer.valueOf(b.get("retentionPeriod").toString()));
         }
+        c.setIsActive(true);
 
-        Nomenclature n = new Nomenclature();
-        n.setCaseCode((String) b.get("caseCode"));
-        n.setTitle((String) b.get("title"));
-        n.setIsActive(true);
-        n.setRetentionPeriod(Integer.valueOf(b.get("retentionPeriod").toString()));
-        n.setDepartment(departmentRepository.findById(asLong(b.get("departmentId"))).orElseThrow());
-
-        n.setDocumentType(docTypeRepository.findById(categoryId)
-                .orElseThrow(() -> new IllegalArgumentException("Категория не найдена")));
-        n.setCategory(docCategoryRepository.findById(typeId)
-                .orElseThrow(() -> new IllegalArgumentException("Тип документа не найден")));
-
-        return ResponseEntity.ok(nomenclatureRepository.save(n));
+        return ResponseEntity.ok(nomenclatureCaseRepository.save(c));
     }
 
     @PutMapping("/nomenclatures/{id}")
+    @Transactional
     public ResponseEntity<?> updateNomenclature(@PathVariable Long id, @RequestBody Map<String, Object> b) {
-        Nomenclature n = nomenclatureRepository.findById(id).orElseThrow();
-        if (b.containsKey("caseCode")) n.setCaseCode((String) b.get("caseCode"));
-        if (b.containsKey("title")) n.setTitle((String) b.get("title"));
-        if (b.containsKey("retentionPeriod"))
-            n.setRetentionPeriod(Integer.valueOf(b.get("retentionPeriod").toString()));
-        if (b.containsKey("departmentId"))
-            n.setDepartment(departmentRepository.findById(asLong(b.get("departmentId"))).orElseThrow());
+        NomenclatureCase c = nomenclatureCaseRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Номенклатура не найдена"));
 
-        if (b.containsKey("documentTypeId")) {
-            Long categoryId = asLong(b.get("documentTypeId"));
-            if (categoryId == null) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Категория обязательна"));
-            }
-            n.setDocumentType(docTypeRepository.findById(categoryId)
+        if (b.containsKey("caseCode"))        c.setCaseCode((String) b.get("caseCode"));
+        if (b.containsKey("title"))           c.setTitle((String) b.get("title"));
+        if (b.containsKey("retentionPeriod") && !b.get("retentionPeriod").toString().isBlank())
+            c.setRetentionPeriod(Integer.valueOf(b.get("retentionPeriod").toString()));
+
+        if (b.containsKey("categoryId") && b.get("categoryId") != null) {
+            c.setCategory(docCategoryRepository.findById(asLong(b.get("categoryId")))
                     .orElseThrow(() -> new IllegalArgumentException("Категория не найдена")));
         }
-        if (b.containsKey("categoryId")) {
-            Long typeId = asLong(b.get("categoryId"));
-            if (typeId == null) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Тип документа обязателен"));
-            }
-            n.setCategory(docCategoryRepository.findById(typeId)
-                    .orElseThrow(() -> new IllegalArgumentException("Тип документа не найден")));
+        if (b.containsKey("typeId") && b.get("typeId") != null) {
+            c.setType(docTypeRepository.findById(asLong(b.get("typeId")))
+                    .orElseThrow(() -> new IllegalArgumentException("Тип не найден")));
         }
 
-        return ResponseEntity.ok(nomenclatureRepository.save(n));
+        if (b.containsKey("departmentId") && b.get("departmentId") != null) {
+            Department dept = departmentRepository.findById(asLong(b.get("departmentId")))
+                    .orElseThrow(() -> new IllegalArgumentException("Подразделение не найдено"));
+            int year = LocalDate.now().getYear();
+            Nomenclature header = nomenclatureRepository
+                    .findFirstByDepartmentDepartmentIdAndYear(dept.getDepartmentId(), year)
+                    .orElseGet(() -> {
+                        Nomenclature n = new Nomenclature();
+                        n.setDepartment(dept);
+                        n.setName("Номенклатура дел на " + year + " год");
+                        n.setYear(year);
+                        n.setIsActive(true);
+                        return nomenclatureRepository.save(n);
+                    });
+            c.setNomenclature(header);
+        }
+
+        if (c.getType() != null && c.getCategory() != null
+                && (c.getType().getCategory() == null
+                || !c.getType().getCategory().getCategoryId().equals(c.getCategory().getCategoryId()))) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Тип не относится к выбранной категории"));
+        }
+
+        return ResponseEntity.ok(nomenclatureCaseRepository.save(c));
     }
 
     @DeleteMapping("/nomenclatures/{id}")
+    @Transactional
     public ResponseEntity<?> deleteNomenclature(@PathVariable Long id) {
-        Nomenclature n = nomenclatureRepository.findById(id).orElseThrow();
-        n.setIsActive(false);
-        nomenclatureRepository.save(n);
-        return ResponseEntity.ok(Map.of("message", "Удалено"));
+        NomenclatureCase c = nomenclatureCaseRepository.findById(id).orElseThrow();
+        boolean hasRelated = !documentRepository.findByNomenclatureCaseId(id).isEmpty();
+        if (hasRelated) {
+            c.setIsActive(false);
+            nomenclatureCaseRepository.save(c);
+            return ResponseEntity.ok(Map.of("message", "Номенклатура деактивирована: есть связанные документы"));
+        }
+        nomenclatureCaseRepository.delete(c);
+        return ResponseEntity.ok(Map.of("message", "Номенклатура удалена полностью"));
     }
 
-    // ================= DOC TYPES / CATEGORIES =================
-    @PostMapping("/doc-types")
-    public ResponseEntity<?> createDocType(@RequestBody Map<String, Object> b) {
-        DocType t = new DocType();
-        t.setCode((String) b.get("code"));
-        t.setName((String) b.get("name"));
-        t.setIsActive(true);
-        return ResponseEntity.ok(docTypeRepository.save(t));
-    }
-    @PutMapping("/doc-types/{id}")
-    public ResponseEntity<?> updateDocType(@PathVariable Long id, @RequestBody Map<String, Object> b) {
-        DocType t = docTypeRepository.findById(id).orElseThrow();
-        if (b.containsKey("code")) t.setCode((String) b.get("code"));
-        if (b.containsKey("name")) t.setName((String) b.get("name"));
-        return ResponseEntity.ok(docTypeRepository.save(t));
-    }
-    @DeleteMapping("/doc-types/{id}")
-    public ResponseEntity<?> deleteDocType(@PathVariable Long id) {
-        DocType t = docTypeRepository.findById(id).orElseThrow();
-        t.setIsActive(false);
-        docTypeRepository.save(t);
-        return ResponseEntity.ok(Map.of("message", "Удалено"));
-    }
-
+    // ================= DOC CATEGORIES CRUD (родитель) =================
     @PostMapping("/doc-categories")
     public ResponseEntity<?> createDocCategory(@RequestBody Map<String, Object> b) {
         DocCategory c = new DocCategory();
         c.setCode((String) b.get("code"));
         c.setName((String) b.get("name"));
         c.setIsActive(true);
-        c.setDocumentType(docTypeRepository.findById(asLong(b.get("documentTypeId"))).orElseThrow());
         return ResponseEntity.ok(docCategoryRepository.save(c));
     }
     @PutMapping("/doc-categories/{id}")
@@ -480,16 +604,65 @@ public class AdminController {
         DocCategory c = docCategoryRepository.findById(id).orElseThrow();
         if (b.containsKey("code")) c.setCode((String) b.get("code"));
         if (b.containsKey("name")) c.setName((String) b.get("name"));
-        if (b.containsKey("documentTypeId"))
-            c.setDocumentType(docTypeRepository.findById(asLong(b.get("documentTypeId"))).orElseThrow());
         return ResponseEntity.ok(docCategoryRepository.save(c));
     }
     @DeleteMapping("/doc-categories/{id}")
+    @Transactional
     public ResponseEntity<?> deleteDocCategory(@PathVariable Long id) {
         DocCategory c = docCategoryRepository.findById(id).orElseThrow();
-        c.setIsActive(false);
-        docCategoryRepository.save(c);
-        return ResponseEntity.ok(Map.of("message", "Удалено"));
+        boolean hasRelated =
+                !docTypeRepository.findByCategoryCategoryId(id).isEmpty()
+                        || !documentRepository.findByCategoryCategoryId(id).isEmpty()
+                        || !posPermissionRepository.findByCategoryCategoryId(id).isEmpty()
+                        || !userPermissionRepository.findByCategoryCategoryId(id).isEmpty()
+                        || !nomenclatureCaseRepository.findByCategoryCategoryId(id).isEmpty();
+        if (hasRelated) {
+            c.setIsActive(false);
+            docCategoryRepository.save(c);
+            return ResponseEntity.ok(Map.of("message", "Категория деактивирована: есть связанные данные"));
+        }
+        docCategoryRepository.delete(c);
+        return ResponseEntity.ok(Map.of("message", "Категория удалена полностью"));
+    }
+
+    // ================= DOC TYPES CRUD (дочерний) =================
+    @PostMapping("/doc-types")
+    public ResponseEntity<?> createDocType(@RequestBody Map<String, Object> b) {
+        if (b.get("categoryId") == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Категория обязательна"));
+        }
+        DocType t = new DocType();
+        t.setCode((String) b.get("code"));
+        t.setName((String) b.get("name"));
+        t.setIsActive(true);
+        t.setCategory(docCategoryRepository.findById(asLong(b.get("categoryId"))).orElseThrow());
+        return ResponseEntity.ok(docTypeRepository.save(t));
+    }
+    @PutMapping("/doc-types/{id}")
+    public ResponseEntity<?> updateDocType(@PathVariable Long id, @RequestBody Map<String, Object> b) {
+        DocType t = docTypeRepository.findById(id).orElseThrow();
+        if (b.containsKey("code")) t.setCode((String) b.get("code"));
+        if (b.containsKey("name")) t.setName((String) b.get("name"));
+        if (b.containsKey("categoryId") && b.get("categoryId") != null)
+            t.setCategory(docCategoryRepository.findById(asLong(b.get("categoryId"))).orElseThrow());
+        return ResponseEntity.ok(docTypeRepository.save(t));
+    }
+    @DeleteMapping("/doc-types/{id}")
+    @Transactional
+    public ResponseEntity<?> deleteDocType(@PathVariable Long id) {
+        DocType t = docTypeRepository.findById(id).orElseThrow();
+        boolean hasRelated =
+                !documentRepository.findByDocumentTypeDocumentTypeId(id).isEmpty()
+                        || !posPermissionRepository.findByDocumentTypeDocumentTypeId(id).isEmpty()
+                        || !userPermissionRepository.findByDocumentTypeDocumentTypeId(id).isEmpty()
+                        || !nomenclatureCaseRepository.findByTypeDocumentTypeId(id).isEmpty();
+        if (hasRelated) {
+            t.setIsActive(false);
+            docTypeRepository.save(t);
+            return ResponseEntity.ok(Map.of("message", "Тип документа деактивирован: есть связанные данные"));
+        }
+        docTypeRepository.delete(t);
+        return ResponseEntity.ok(Map.of("message", "Тип документа удалён полностью"));
     }
 
     // ================= DOC ACTIONS =================
@@ -509,17 +682,20 @@ public class AdminController {
         if (b.containsKey("description")) a.setDescription((String) b.get("description"));
         return ResponseEntity.ok(docActionRepository.save(a));
     }
+    /** У действия нет isActive — либо полное удаление, либо отказ. */
     @DeleteMapping("/doc-actions/{id}")
     @Transactional
     public ResponseEntity<?> deleteDocAction(@PathVariable Long id) {
-        try {
-            docActionRepository.deleteById(id);
-            return ResponseEntity.ok(Map.of("message", "Удалено"));
-        } catch (DataIntegrityViolationException e) {
-            logger.warn("Нельзя удалить действие ID={}: используется в маршрутах/истории", id);
+        DocAction a = docActionRepository.findById(id).orElseThrow();
+        boolean hasRelated =
+                !docRouteRepository.findByActionActionId(id).isEmpty()
+                        || !docHistoryRepository.findByActionActionId(id).isEmpty();
+        if (hasRelated) {
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Действие используется в маршрутах или истории, удаление невозможно"));
+                    .body(Map.of("error", "Действие используется в маршрутах или истории. Удаление невозможно."));
         }
+        docActionRepository.delete(a);
+        return ResponseEntity.ok(Map.of("message", "Действие удалено полностью"));
     }
 
     // ================= ROUTE STAGES =================
@@ -542,14 +718,14 @@ public class AdminController {
     @DeleteMapping("/route-stages/{id}")
     @Transactional
     public ResponseEntity<?> deleteRouteStage(@PathVariable Long id) {
-        try {
-            routeStageRepository.deleteById(id);
-            return ResponseEntity.ok(Map.of("message", "Удалено"));
-        } catch (DataIntegrityViolationException e) {
-            logger.warn("Нельзя удалить этап ID={}: используется в маршрутах", id);
+        RouteStage s = routeStageRepository.findById(id).orElseThrow();
+        boolean hasRelated = !docRouteRepository.findByStageStageId(id).isEmpty();
+        if (hasRelated) {
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Этап используется в маршрутах документов, удаление невозможно"));
+                    .body(Map.of("error", "Этап используется в маршрутах документов. Удаление невозможно."));
         }
+        routeStageRepository.delete(s);
+        return ResponseEntity.ok(Map.of("message", "Этап удалён полностью"));
     }
 
     // ================= BASE ROLES =================
@@ -570,14 +746,14 @@ public class AdminController {
     @DeleteMapping("/base-roles/{id}")
     @Transactional
     public ResponseEntity<?> deleteBaseRole(@PathVariable Long id) {
-        try {
-            baseRoleRepository.deleteById(id);
-            return ResponseEntity.ok(Map.of("message", "Удалено"));
-        } catch (DataIntegrityViolationException e) {
-            logger.warn("Нельзя удалить базовую роль ID={}: назначена пользователям", id);
+        BaseRole r = baseRoleRepository.findById(id).orElseThrow();
+        boolean hasRelated = !userRepository.findByBaseRoleBaseRoleId(id).isEmpty();
+        if (hasRelated) {
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Роль назначена пользователям, удаление невозможно"));
+                    .body(Map.of("error", "Роль назначена пользователям. Удаление невозможно."));
         }
+        baseRoleRepository.delete(r);
+        return ResponseEntity.ok(Map.of("message", "Роль удалена полностью"));
     }
 
     // ================= POSITIONS =================
@@ -588,7 +764,6 @@ public class AdminController {
         p.setName((String) b.get("name"));
         return ResponseEntity.ok(positionRepository.save(p));
     }
-
     @PutMapping("/positions/{id}")
     public ResponseEntity<?> updatePosition(@PathVariable Long id, @RequestBody Map<String, Object> b) {
         Position p = positionRepository.findById(id).orElseThrow();
@@ -596,23 +771,19 @@ public class AdminController {
         if (b.containsKey("name")) p.setName((String) b.get("name"));
         return ResponseEntity.ok(positionRepository.save(p));
     }
-
     @DeleteMapping("/positions/{id}")
     @Transactional
     public ResponseEntity<?> deletePosition(@PathVariable Long id) {
-        Position pos = positionRepository.findById(id).orElseThrow();
-
-        if (!userRepository.findByPositionPositionId(id).isEmpty()) {
+        Position p = positionRepository.findById(id).orElseThrow();
+        boolean hasRelated =
+                !userRepository.findByPositionPositionId(id).isEmpty()
+                        || !posPermissionRepository.findByPositionPositionId(id).isEmpty();
+        if (hasRelated) {
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Должность назначена пользователям. Сначала смените им должность."));
+                    .body(Map.of("error", "Должность назначена пользователям или имеет полномочия. Удаление невозможно."));
         }
-        if (!posPermissionRepository.findByPositionPositionId(id).isEmpty()) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "У должности есть связанные полномочия. Сначала удалите их."));
-        }
-
-        positionRepository.deleteById(pos.getPositionId());
-        return ResponseEntity.ok(Map.of("message", "Должность удалена"));
+        positionRepository.delete(p);
+        return ResponseEntity.ok(Map.of("message", "Должность удалена полностью"));
     }
 
     // ================= PERMISSIONS =================
@@ -635,18 +806,19 @@ public class AdminController {
     @DeleteMapping("/permissions/{id}")
     @Transactional
     public ResponseEntity<?> deletePermission(@PathVariable Long id) {
-        try {
-            permissionRepository.deleteById(id);
-            return ResponseEntity.ok(Map.of("message", "Удалено"));
-        } catch (DataIntegrityViolationException e) {
-            logger.warn("Нельзя удалить полномочие ID={}: выдано пользователям/должностям", id);
+        Permission p = permissionRepository.findById(id).orElseThrow();
+        boolean hasRelated =
+                !posPermissionRepository.findByPermissionPermissionId(id).isEmpty()
+                        || !userPermissionRepository.findByPermissionPermissionId(id).isEmpty();
+        if (hasRelated) {
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Полномочие выдано пользователям или должностям, удаление невозможно"));
+                    .body(Map.of("error", "Полномочие выдано пользователям или должностям. Удаление невозможно."));
         }
+        permissionRepository.delete(p);
+        return ResponseEntity.ok(Map.of("message", "Полномочие удалено полностью"));
     }
 
-    // ================= helpers =================
-
+    // ================= HELPERS =================
     private static Long asLong(Object o) {
         if (o == null) return null;
         if (o instanceof Number n) return n.longValue();

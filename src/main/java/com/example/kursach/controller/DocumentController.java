@@ -54,6 +54,7 @@ public class DocumentController {
     private final DocTypeRepository docTypeRepository;
     private final DocCategoryRepository docCategoryRepository;
     private final NomenclatureRepository nomenclatureRepository;
+    private final NomenclatureCaseRepository nomenclatureCaseRepository;
     private final RouteStageRepository routeStageRepository;
     private final UserRepository userRepository;
     private final PermissionRepository permissionRepository;
@@ -71,6 +72,7 @@ public class DocumentController {
                               DocTypeRepository docTypeRepository,
                               DocCategoryRepository docCategoryRepository,
                               NomenclatureRepository nomenclatureRepository,
+                              NomenclatureCaseRepository nomenclatureCaseRepository,
                               RouteStageRepository routeStageRepository,
                               UserRepository userRepository,
                               PermissionRepository permissionRepository,
@@ -84,6 +86,7 @@ public class DocumentController {
         this.docTypeRepository = docTypeRepository;
         this.docCategoryRepository = docCategoryRepository;
         this.nomenclatureRepository = nomenclatureRepository;
+        this.nomenclatureCaseRepository = nomenclatureCaseRepository;
         this.routeStageRepository = routeStageRepository;
         this.userRepository = userRepository;
         this.permissionRepository = permissionRepository;
@@ -99,11 +102,11 @@ public class DocumentController {
     @Transactional(readOnly = true)
     public ResponseEntity<?> getMyDocuments(
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader,
-            @RequestParam("type") String typeCode) {
+            @RequestParam("type") String categoryCode) {
         Long userId = extractUserId(authHeader);
         User user = userRepository.findById(userId).orElseThrow();
-        return ResponseEntity.ok(documentRepository.findMyDocsByTypeCode(
-                userId, user.getDepartment().getDepartmentId(), typeCode));
+        return ResponseEntity.ok(documentRepository.findMyDocsByCategoryCode(
+                userId, user.getDepartment().getDepartmentId(), categoryCode));
     }
 
     @GetMapping("/{id}")
@@ -190,7 +193,65 @@ public class DocumentController {
         }
         return ResponseEntity.ok(result);
     }
+// =====================================================================
+    // ОТМЕТКА ПРОЧТЕНИЯ ЗАДАЧИ
+    // =====================================================================
+    /**
+     * Отмечает задачу текущего исполнителя прочитанной.
+     *
+     * Логика по ТЗ:
+     *  - При создании маршрута первый этап получает PENDING («Не прочитано»),
+     *    остальные — WAITING («Ожидает»).
+     *  - Как только исполнитель заходит в поручение, его активная задача
+     *    переходит из PENDING в IN_PROGRESS («В процессе»).
+     *
+     * Действие выполняется только для задач текущего пользователя,
+     * находящихся в PENDING, и только если все более ранние этапы завершены.
+     */
+    @PostMapping("/{id}/mark-read")
+    @Transactional
+    public ResponseEntity<?> markAsRead(
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader,
+            @PathVariable Long id) {
 
+        Long userId = extractUserId(authHeader);
+        Document doc = documentRepository.findById(id).orElseThrow();
+
+        // Нет доступа — нечего отмечать (можно тихо выйти)
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null || !hasAccessToDocument(user, doc)) {
+            return ResponseEntity.status(403).body(Map.of("error", "Нет доступа"));
+        }
+
+        List<DocRoute> routes = docRouteRepository
+                .findByDocumentDocumentIdOrderByStepNumberAsc(id);
+
+        LocalDateTime now = LocalDateTime.now();
+        int activated = 0;
+
+        for (DocRoute r : routes) {
+            if (!r.getAssignedUser().getUserId().equals(userId)) continue;
+            if (!"PENDING".equals(r.getStatus())) continue;
+
+            // Проверяем, что нет незавершённых более ранних этапов
+            boolean earlierActive = routes.stream()
+                    .filter(other -> other.getStepNumber() < r.getStepNumber())
+                    .anyMatch(other -> NON_TERMINAL_ROUTE_STATUSES.contains(other.getStatus()));
+            if (earlierActive) continue;
+
+            r.setStatus("IN_PROGRESS");
+            if (r.getStartedAt() == null) r.setStartedAt(now);
+            docRouteRepository.save(r);
+            activated++;
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "activated", activated,
+                "message", activated > 0
+                        ? "Задача переведена в статус «В процессе»"
+                        : "Активных задач для прочтения не найдено"
+        ));
+    }
     // =====================================================================
     // СОЗДАНИЕ / РЕДАКТИРОВАНИЕ
     // =====================================================================
@@ -208,41 +269,47 @@ public class DocumentController {
         if (title == null || title.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Название документа обязательно"));
         }
-        if (body.get("documentTypeId") == null) {
+        if (body.get("categoryId") == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "Категория обязательна"));
         }
-        if (body.get("categoryId") == null) {
+        if (body.get("typeId") == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "Тип документа обязателен"));
         }
         if (body.get("nomenclatureId") == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "Номенклатура дел обязательна"));
         }
 
-        // В БД documentTypeId - это Категория, а categoryId - это Тип
-        DocType category = docTypeRepository.findById(asLong(body.get("documentTypeId"))).orElseThrow();
-        DocCategory type = docCategoryRepository.findById(asLong(body.get("categoryId"))).orElseThrow();
-        Nomenclature nom = nomenclatureRepository.findById(asLong(body.get("nomenclatureId"))).orElseThrow();
+        DocCategory category = docCategoryRepository.findById(asLong(body.get("categoryId")))
+                .orElseThrow(() -> new IllegalArgumentException("Категория не найдена"));
+        DocType type = docTypeRepository.findById(asLong(body.get("typeId")))
+                .orElseThrow(() -> new IllegalArgumentException("Тип не найден"));
+        NomenclatureCase nomCase = nomenclatureCaseRepository.findById(asLong(body.get("nomenclatureId")))
+                .orElseThrow(() -> new IllegalArgumentException("Номенклатура дел не найдена"));
 
-        // 1. Тип должен принадлежать выбранной категории
-        if (type.getDocumentType() == null
-                || !type.getDocumentType().getDocumentTypeId().equals(category.getDocumentTypeId())) {
+        // Тип должен принадлежать выбранной категории
+        if (type.getCategory() == null
+                || !type.getCategory().getCategoryId().equals(category.getCategoryId())) {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "Тип документа не относится к выбранной категории"));
         }
 
-        // 2. Номенклатура должна принадлежать подразделению автора (BR-15)
-        if (nom.getDepartment() == null
-                || !nom.getDepartment().getDepartmentId().equals(user.getDepartment().getDepartmentId())) {
+        // Дело должно принадлежать подразделению автора
+        if (nomCase.getNomenclature() == null
+                || nomCase.getNomenclature().getDepartment() == null
+                || !nomCase.getNomenclature().getDepartment().getDepartmentId()
+                .equals(user.getDepartment().getDepartmentId())) {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "Номенклатура принадлежит другому подразделению"));
         }
 
-        // 3. Номенклатура должна соответствовать выбранным категории и типу
-        if (!nom.getDocumentType().getDocumentTypeId().equals(category.getDocumentTypeId())) {
+        // Дело должно соответствовать категории и типу
+        if (nomCase.getCategory() != null
+                && !nomCase.getCategory().getCategoryId().equals(category.getCategoryId())) {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "Номенклатура не подходит для выбранной категории"));
         }
-        if (!nom.getCategory().getCategoryId().equals(type.getCategoryId())) {
+        if (nomCase.getType() != null
+                && !nomCase.getType().getDocumentTypeId().equals(type.getDocumentTypeId())) {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "Номенклатура не подходит для выбранного типа"));
         }
@@ -250,9 +317,9 @@ public class DocumentController {
         Document doc = new Document();
         doc.setTitle(title);
         doc.setContent((String) body.getOrDefault("content", ""));
-        doc.setDocumentType(category);
-        doc.setCategory(type);
-        doc.setNomenclature(nom);
+        doc.setCategory(category);
+        doc.setDocumentType(type);
+        doc.setNomenclature(nomCase);
         doc.setAuthor(user);
         doc.setDepartment(user.getDepartment());
         doc.setSector(user.getSector());
@@ -296,56 +363,53 @@ public class DocumentController {
         }
         if (body.containsKey("content")) doc.setContent((String) body.get("content"));
 
+        DocCategory newCategory = doc.getCategory();
         DocType newType = doc.getDocumentType();
-        if (body.containsKey("documentTypeId") && body.get("documentTypeId") != null) {
-            newType = docTypeRepository.findById(asLong(body.get("documentTypeId"))).orElse(null);
-            if (newType == null) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Тип документа не найден"));
-            }
-        }
+
         if (body.containsKey("categoryId") && body.get("categoryId") != null) {
-            DocCategory cat = docCategoryRepository.findById(asLong(body.get("categoryId"))).orElse(null);
-            if (cat == null) {
+            newCategory = docCategoryRepository.findById(asLong(body.get("categoryId"))).orElse(null);
+            if (newCategory == null) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Категория не найдена"));
             }
-            if (cat.getDocumentType() == null
-                    || newType == null
-                    || !cat.getDocumentType().getDocumentTypeId().equals(newType.getDocumentTypeId())) {
-                return ResponseEntity.badRequest()
-                        .body(Map.of("error", "Категория не относится к выбранному типу документа"));
+        }
+        if (body.containsKey("typeId") && body.get("typeId") != null) {
+            newType = docTypeRepository.findById(asLong(body.get("typeId"))).orElse(null);
+            if (newType == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Тип не найден"));
             }
-            doc.setCategory(cat);
         }
-        if (newType != null && body.containsKey("documentTypeId")) {
-            doc.setDocumentType(newType);
+        if (newType != null && newCategory != null
+                && (newType.getCategory() == null
+                || !newType.getCategory().getCategoryId().equals(newCategory.getCategoryId()))) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Тип не относится к выбранной категории"));
         }
+        doc.setCategory(newCategory);
+        doc.setDocumentType(newType);
 
         if (body.containsKey("nomenclatureId") && body.get("nomenclatureId") != null) {
-            Nomenclature nom = nomenclatureRepository.findById(asLong(body.get("nomenclatureId"))).orElse(null);
-            if (nom == null) {
+            NomenclatureCase nomCase = nomenclatureCaseRepository
+                    .findById(asLong(body.get("nomenclatureId"))).orElse(null);
+            if (nomCase == null) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Номенклатура не найдена"));
             }
-            if (nom.getDepartment() == null
-                    || !nom.getDepartment().getDepartmentId().equals(user.getDepartment().getDepartmentId())) {
+            if (nomCase.getNomenclature() == null || nomCase.getNomenclature().getDepartment() == null
+                    || !nomCase.getNomenclature().getDepartment().getDepartmentId()
+                    .equals(user.getDepartment().getDepartmentId())) {
                 return ResponseEntity.badRequest()
                         .body(Map.of("error", "Номенклатура принадлежит другому подразделению"));
             }
-            doc.setNomenclature(nom);
-        }
-
-        // Финальная проверка соответствия номенклатуры типу/категории
-        Nomenclature finalNom = doc.getNomenclature();
-        DocType finalType = doc.getDocumentType();
-        DocCategory finalCat = doc.getCategory();
-        if (finalNom != null && finalType != null && finalNom.getDocumentType() != null
-                && !finalNom.getDocumentType().getDocumentTypeId().equals(finalType.getDocumentTypeId())) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Номенклатура не подходит для выбранного типа документа"));
-        }
-        if (finalNom != null && finalCat != null && finalNom.getCategory() != null
-                && !finalNom.getCategory().getCategoryId().equals(finalCat.getCategoryId())) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Номенклатура не подходит для выбранной категории"));
+            if (nomCase.getCategory() != null && !nomCase.getCategory().getCategoryId()
+                    .equals(newCategory.getCategoryId())) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "Номенклатура не подходит для выбранной категории"));
+            }
+            if (nomCase.getType() != null && !nomCase.getType().getDocumentTypeId()
+                    .equals(newType.getDocumentTypeId())) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "Номенклатура не подходит для выбранного типа"));
+            }
+            doc.setNomenclature(nomCase);
         }
 
         doc.setUpdatedAt(LocalDateTime.now());
@@ -673,14 +737,15 @@ public class DocumentController {
                     .body(Map.of("error", "Вы не назначены регистратором по этому документу"));
         }
 
-        Nomenclature lockedNom = nomenclatureRepository.findByIdForUpdate(doc.getNomenclature().getNomenclatureId())
-                .orElseThrow(() -> new IllegalArgumentException("Номенклатура не найдена"));
+        NomenclatureCase lockedNom = nomenclatureCaseRepository
+                .findByIdForUpdate(doc.getNomenclature().getCaseId())
+                .orElseThrow(() -> new IllegalArgumentException("Номенклатура дел не найдена"));
 
         String deptCode = doc.getDepartment().getCode();
         String caseCode = lockedNom.getCaseCode();
         long seq = documentRepository.countRegistrationsByDeptAndCase(
                 doc.getDepartment().getDepartmentId(),
-                lockedNom.getNomenclatureId()) + 1;
+                lockedNom.getCaseId()) + 1;
         String regNumber = String.format("%s-%s-%03d", deptCode, caseCode, seq);
 
         if (documentRepository.findByRegistrationNumber(regNumber).isPresent()) {
@@ -954,7 +1019,7 @@ public class DocumentController {
     }
 
     // =====================================================================
-    // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
+    // ВСПОМОГАТЕЛЬНЫЕ
     // =====================================================================
 
     private Long extractUserId(String authHeader) {
@@ -1001,11 +1066,14 @@ public class DocumentController {
         return isAdmin || isAuthor || isInRoute || sameDept;
     }
 
+    /**
+     * Обязательные действия определяются КОДОМ КАТЕГОРИИ (родитель).
+     */
     private Set<String> requiredActionsFor(Document doc) {
         Set<String> required = new LinkedHashSet<>(
                 List.of("APPROVE", "SIGN", "REGISTER", "REVIEW"));
-        if (doc.getDocumentType() != null) {
-            String code = doc.getDocumentType().getCode();
+        if (doc.getCategory() != null) {
+            String code = doc.getCategory().getCode();
             if ("ORGANIZATIONAL".equals(code)) required.add("READ");
             else if ("ADMINISTRATIVE".equals(code)) required.add("EXECUTE");
         }
@@ -1061,15 +1129,15 @@ public class DocumentController {
         }
 
         Long permId = permission.getPermissionId();
-        Long docTypeId = doc.getDocumentType() != null ? doc.getDocumentType().getDocumentTypeId() : null;
-        Long catId = doc.getCategory() != null ? doc.getCategory().getCategoryId() : null;
+        Long typeId = doc.getDocumentType() != null ? doc.getDocumentType().getDocumentTypeId() : null;
+        Long catId  = doc.getCategory() != null ? doc.getCategory().getCategoryId() : null;
         Long deptId = doc.getDepartment() != null ? doc.getDepartment().getDepartmentId() : null;
         Long sectorId = doc.getSector() != null ? doc.getSector().getSectorId() : null;
 
         boolean hasUserPerm = userPermissionRepository.findByUserUserId(user.getUserId()).stream().anyMatch(p ->
                 p.getPermission().getPermissionId().equals(permId)
                         && Boolean.TRUE.equals(p.getIsAllowed())
-                        && (p.getDocumentType() == null || p.getDocumentType().getDocumentTypeId().equals(docTypeId))
+                        && (p.getDocumentType() == null || p.getDocumentType().getDocumentTypeId().equals(typeId))
                         && (p.getCategory() == null || (catId != null && p.getCategory().getCategoryId().equals(catId)))
                         && (p.getDepartment() == null || (deptId != null && p.getDepartment().getDepartmentId().equals(deptId)))
                         && (p.getSector() == null || (sectorId != null && p.getSector().getSectorId().equals(sectorId)))
@@ -1081,7 +1149,7 @@ public class DocumentController {
         return posPermissionRepository.findByPositionPositionIdAndIsAllowedTrue(
                 user.getPosition().getPositionId()).stream().anyMatch(p ->
                 p.getPermission().getPermissionId().equals(permId)
-                        && (p.getDocumentType() == null || p.getDocumentType().getDocumentTypeId().equals(docTypeId))
+                        && (p.getDocumentType() == null || p.getDocumentType().getDocumentTypeId().equals(typeId))
                         && (p.getCategory() == null || (catId != null && p.getCategory().getCategoryId().equals(catId)))
                         && (p.getDepartment() == null || (deptId != null && p.getDepartment().getDepartmentId().equals(deptId)))
                         && (p.getSector() == null || (sectorId != null && p.getSector().getSectorId().equals(sectorId)))

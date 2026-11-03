@@ -14,10 +14,15 @@ function renderSidebar() {
     });
     html += '</div></div>';
 
+    // КАТЕГОРИИ — ДИНАМИЧЕСКИЕ (из БД)
     html += '<div class="nav-group"><button class="nav-group__title" onclick="toggleGroup(this)"><span>Категории документов</span><span>−</span></button><div class="nav-group__items">';
-    CATEGORIES.forEach(function (d) {
-        html += '<button class="nav-item" data-key="doc:' + d.code + '" onclick="selectSection(\'doc\',\'' + d.code + '\',this)">' + d.name + '</button>';
-    });
+    if (!CATEGORIES || CATEGORIES.length === 0) {
+        html += '<div class="muted" style="padding: 8px 16px; font-size: 12px;">Нет активных категорий</div>';
+    } else {
+        CATEGORIES.forEach(function (d) {
+            html += '<button class="nav-item" data-key="doc:' + d.code + '" onclick="selectSection(\'doc\',\'' + d.code + '\',this)">' + escapeHtml(d.name) + '</button>';
+        });
+    }
     html += '</div></div>';
 
     if (isAdmin) {
@@ -50,6 +55,7 @@ function selectSection(type, code, btn) {
     activeFilters = {};
     sortConfig = { key: null, direction: 'asc' };
     currentPermissionUserId = null;
+    currentPositionId = null;
     closeViewSidebar();
     closeFilterPopover();
 
@@ -75,6 +81,10 @@ async function loadSection(section) {
         refToolbar.style.display = 'flex';
         taskStatusFilter.style.display = 'none';
         renderRefTypeSelector();
+    } else if (section.type === 'admin' && section.code === 'PERMISSIONS') {
+        refToolbar.style.display = 'flex';
+        taskStatusFilter.style.display = 'none';
+        // Переключатель режимов «Пользователи / Должности» отрисует loadPermissionManagement()
     } else if (section.type === 'task') {
         refToolbar.style.display = 'none';
         taskStatusFilter.style.display = 'block';
@@ -146,7 +156,7 @@ function renderTable(containerId, data, columns, isClickable, extraActions) {
                 '<span class="filter-icon ' + isFiltered + '" onclick="openFilterPopover(event, \'' + col.key + '\', \'' + col.label + '\')">⏷</span>' +
             '</div></th>';
     });
-    if (extraActions) html += '<th>Действия</th>';
+    if (extraActions) html += '<th class="actions-header">Действия</th>';
     html += '</tr></thead><tbody>';
 
     data.slice(0, pageSize).forEach(function (row) {
@@ -158,7 +168,7 @@ function renderTable(containerId, data, columns, isClickable, extraActions) {
             if (col.fmt) val = col.fmt(val, row);
             html += '<td>' + (val == null ? '—' : val) + '</td>';
         });
-        if (extraActions) html += '<td onclick="event.stopPropagation()">' + extraActions(row) + '</td>';
+        if (extraActions) html += '<td class="actions-cell" onclick="event.stopPropagation()">' + extraActions(row) + '</td>';
         html += '</tr>';
     });
     html += '</tbody></table>';
@@ -192,6 +202,13 @@ function sortData(data) {
     });
 }
 
+// Карта для фильтров по статусам: ключ столбца → карта русских названий
+function getStatusMapFor(key) {
+    if (key === 'status') return STATUS_MAP;
+    if (key === 'routeStatus') return ROUTE_STATUS_MAP;
+    return null;
+}
+
 function openFilterPopover(event, key, label) {
     event.stopPropagation();
     currentFilterKey = key;
@@ -200,10 +217,12 @@ function openFilterPopover(event, key, label) {
     document.getElementById('filterPopoverTitle').textContent = 'Фильтр: ' + label;
 
     var currentVal = activeFilters[key] || '';
-    if (key === 'status') {
+    var map = getStatusMapFor(key);
+
+    if (map) {
         var html = '<select id="filterInput"><option value="">Все</option>';
-        Object.keys(STATUS_MAP).forEach(function (code) {
-            var name = STATUS_MAP[code];
+        Object.keys(map).forEach(function (code) {
+            var name = map[code];
             html += '<option value="' + name.toLowerCase() + '"' + (currentVal === name.toLowerCase() ? ' selected' : '') + '>' + name + '</option>';
         });
         body.innerHTML = html + '</select>';
@@ -246,14 +265,14 @@ function closeFilterPopover() {
 function applySearch() {
     var q = document.getElementById('tableSearch').value.toLowerCase();
     var filtered = currentData.filter(function (row) {
-        // Скрытие черновиков (если включено)
         if (hideDrafts && row.status === 'DRAFT') return false;
 
         if (q && !Object.keys(row).some(function (k) { return String(row[k]).toLowerCase().includes(q); })) return false;
         for (var key in activeFilters) {
             var rowVal = row;
             key.split('.').forEach(function (k) { if (rowVal) rowVal = rowVal[k]; });
-            if (key === 'status') rowVal = STATUS_MAP[rowVal] || rowVal;
+            var map = getStatusMapFor(key);
+            if (map) rowVal = map[rowVal] || rowVal;
             if (!String(rowVal || '').toLowerCase().includes(activeFilters[key])) return false;
         }
         return true;
@@ -265,7 +284,15 @@ function applySearch() {
     else if (currentSection.type === 'task') renderTable('tableContainer', filtered, ALL_TASK_COLUMNS, true, null);
     else if (currentSection.type === 'doc') renderTable('tableContainer', filtered, ALL_DOC_COLUMNS, true, null);
     else if (currentSection.type === 'admin' && currentSection.code === 'REFERENCE') renderRefTable(filtered);
-    else if (currentSection.type === 'admin' && currentSection.code === 'PERMISSIONS' && !currentPermissionUserId) renderUsersTable(filtered);
+    else if (currentSection.type === 'admin' && currentSection.code === 'PERMISSIONS') {
+        // Режим «Пользователи»: рендерим список пользователей, если не открыты детали
+        // Режим «Должности»:   рендерим список должностей, если не открыты детали
+        if (currentPermissionMode === 'positions') {
+            if (!currentPositionId) renderPositionsTable(filtered);
+        } else {
+            if (!currentPermissionUserId) renderUsersTable(filtered);
+        }
+    }
 }
 
 function toggleViewSidebar() { document.getElementById('viewSidebar').classList.toggle('open'); }

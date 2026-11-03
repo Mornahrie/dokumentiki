@@ -1,7 +1,6 @@
 package com.example.kursach.entity;
 
 import jakarta.persistence.*;
-
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -14,16 +13,16 @@ public class Document {
     private Long documentId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "document_type_id", nullable = false)
-    private DocType documentType;
-
-    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id", nullable = false)
     private DocCategory category;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "type_id", nullable = false)
+    private DocType documentType;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "nomenclature_id", nullable = false)
-    private Nomenclature nomenclature;
+    private NomenclatureCase nomenclature;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "author_id", nullable = false)
@@ -64,55 +63,37 @@ public class Document {
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
-    // ------------------------------------------------------------------
-    // Геттеры и сеттеры
-    // ------------------------------------------------------------------
-
+    // геттеры/сеттеры — без изменений
     public Long getDocumentId() { return documentId; }
     public void setDocumentId(Long documentId) { this.documentId = documentId; }
-
-    public DocType getDocumentType() { return documentType; }
-    public void setDocumentType(DocType documentType) { this.documentType = documentType; }
-
     public DocCategory getCategory() { return category; }
     public void setCategory(DocCategory category) { this.category = category; }
-
-    public Nomenclature getNomenclature() { return nomenclature; }
-    public void setNomenclature(Nomenclature nomenclature) { this.nomenclature = nomenclature; }
-
+    public DocType getDocumentType() { return documentType; }
+    public void setDocumentType(DocType documentType) { this.documentType = documentType; }
+    public NomenclatureCase getNomenclature() { return nomenclature; }
+    public void setNomenclature(NomenclatureCase nomenclature) { this.nomenclature = nomenclature; }
     public User getAuthor() { return author; }
     public void setAuthor(User author) { this.author = author; }
-
     public Department getDepartment() { return department; }
     public void setDepartment(Department department) { this.department = department; }
-
     public Sector getSector() { return sector; }
     public void setSector(Sector sector) { this.sector = sector; }
-
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
-
     public String getContent() { return content; }
     public void setContent(String content) { this.content = content; }
-
     public String getRegistrationNumber() { return registrationNumber; }
     public void setRegistrationNumber(String registrationNumber) { this.registrationNumber = registrationNumber; }
-
     public LocalDate getRegistrationDate() { return registrationDate; }
     public void setRegistrationDate(LocalDate registrationDate) { this.registrationDate = registrationDate; }
-
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
-
     public LocalDateTime getDeadline() { return deadline; }
     public void setDeadline(LocalDateTime deadline) { this.deadline = deadline; }
-
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
-
     public LocalDateTime getCompletedAt() { return completedAt; }
     public void setCompletedAt(LocalDateTime completedAt) { this.completedAt = completedAt; }
 }

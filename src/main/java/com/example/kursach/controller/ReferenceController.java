@@ -17,7 +17,7 @@ public class ReferenceController {
 
     private final DepartmentRepository departmentRepository;
     private final SectorRepository sectorRepository;
-    private final NomenclatureRepository nomenclatureRepository;
+    private final NomenclatureCaseRepository nomenclatureCaseRepository;
     private final DocTypeRepository docTypeRepository;
     private final DocCategoryRepository docCategoryRepository;
     private final RouteStageRepository routeStageRepository;
@@ -28,7 +28,7 @@ public class ReferenceController {
 
     public ReferenceController(DepartmentRepository departmentRepository,
                                SectorRepository sectorRepository,
-                               NomenclatureRepository nomenclatureRepository,
+                               NomenclatureCaseRepository nomenclatureCaseRepository,
                                DocTypeRepository docTypeRepository,
                                DocCategoryRepository docCategoryRepository,
                                RouteStageRepository routeStageRepository,
@@ -38,7 +38,7 @@ public class ReferenceController {
                                UserRepository userRepository) {
         this.departmentRepository = departmentRepository;
         this.sectorRepository = sectorRepository;
-        this.nomenclatureRepository = nomenclatureRepository;
+        this.nomenclatureCaseRepository = nomenclatureCaseRepository;
         this.docTypeRepository = docTypeRepository;
         this.docCategoryRepository = docCategoryRepository;
         this.routeStageRepository = routeStageRepository;
@@ -48,48 +48,87 @@ public class ReferenceController {
         this.userRepository = userRepository;
     }
 
-    @GetMapping("/departments")    public ResponseEntity<?> departments()    { return ResponseEntity.ok(departmentRepository.findByIsActiveTrue()); }
-    @GetMapping("/sectors")        public ResponseEntity<?> sectors()        { return ResponseEntity.ok(sectorRepository.findByIsActiveTrue()); }
-    @GetMapping("/doc-types")      public ResponseEntity<?> docTypes()       { return ResponseEntity.ok(docTypeRepository.findByIsActiveTrue()); }
-    @GetMapping("/doc-categories") public ResponseEntity<?> docCategories()  { return ResponseEntity.ok(docCategoryRepository.findByIsActiveTrue()); }
-    @GetMapping("/route-stages")   public ResponseEntity<?> routeStages()    { return ResponseEntity.ok(routeStageRepository.findAll()); }
-    @GetMapping("/doc-actions")    public ResponseEntity<?> docActions()     { return ResponseEntity.ok(docActionRepository.findAll()); }
-    @GetMapping("/positions")      public ResponseEntity<?> positions()      { return ResponseEntity.ok(positionRepository.findAll()); }
-    @GetMapping("/base-roles")     public ResponseEntity<?> baseRoles()      { return ResponseEntity.ok(baseRoleRepository.findAll()); }
+    @GetMapping("/departments")
+    public ResponseEntity<?> departments()   { return ResponseEntity.ok(departmentRepository.findByIsActiveTrue()); }
 
+    @GetMapping("/sectors")
+    public ResponseEntity<?> sectors()       { return ResponseEntity.ok(sectorRepository.findByIsActiveTrue()); }
+
+    @GetMapping("/route-stages")
+    public ResponseEntity<?> routeStages()   { return ResponseEntity.ok(routeStageRepository.findAll()); }
+
+    @GetMapping("/doc-actions")
+    public ResponseEntity<?> docActions()    { return ResponseEntity.ok(docActionRepository.findAll()); }
+
+    @GetMapping("/positions")
+    public ResponseEntity<?> positions()     { return ResponseEntity.ok(positionRepository.findAll()); }
+
+    @GetMapping("/base-roles")
+    public ResponseEntity<?> baseRoles()     { return ResponseEntity.ok(baseRoleRepository.findAll()); }
+
+    // ===== КАТЕГОРИИ (родитель) =====
+    @GetMapping("/doc-categories")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> docCategories() {
+        return ResponseEntity.ok(docCategoryRepository.findByIsActiveTrue());
+    }
+
+    // ===== ТИПЫ (дочерние, с категорией) =====
+    @GetMapping("/doc-types")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> docTypes() {
+        List<Map<String, Object>> result = docTypeRepository.findByIsActiveTrue().stream().map(t -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("documentTypeId", t.getDocumentTypeId());
+            m.put("code", t.getCode());
+            m.put("name", t.getName());
+            m.put("isActive", t.getIsActive());
+            if (t.getCategory() != null) {
+                Map<String, Object> cat = new LinkedHashMap<>();
+                cat.put("categoryId", t.getCategory().getCategoryId());
+                cat.put("code", t.getCategory().getCode());
+                cat.put("name", t.getCategory().getName());
+                m.put("category", cat);
+            }
+            return m;
+        }).toList();
+        return ResponseEntity.ok(result);
+    }
+
+    // ===== НОМЕНКЛАТУРЫ (возвращаем ДЕЛА с вложенной шапкой) =====
     @GetMapping("/nomenclatures")
     @Transactional(readOnly = true)
     public ResponseEntity<?> nomenclatures() {
-        List<Map<String, Object>> result = nomenclatureRepository.findByIsActiveTrue().stream().map(n -> {
+        List<Map<String, Object>> result = nomenclatureCaseRepository.findByIsActiveTrue().stream().map(c -> {
             Map<String, Object> m = new LinkedHashMap<>();
-            m.put("nomenclatureId", n.getNomenclatureId());
-            m.put("caseCode", n.getCaseCode());
-            m.put("title", n.getTitle());
-            m.put("retentionPeriod", n.getRetentionPeriod());
-            m.put("isActive", n.getIsActive());
+            m.put("nomenclatureId", c.getCaseId());
+            m.put("caseId", c.getCaseId());
+            m.put("caseCode", c.getCaseCode());
+            m.put("title", c.getTitle());
+            m.put("retentionPeriod", c.getRetentionPeriod());
+            m.put("isActive", c.getIsActive());
 
-            m.put("departmentId", n.getDepartment() != null ? n.getDepartment().getDepartmentId() : null);
-            m.put("departmentName", n.getDepartment() != null ? n.getDepartment().getName() : null);
+            if (c.getNomenclature() != null && c.getNomenclature().getDepartment() != null) {
+                m.put("departmentId", c.getNomenclature().getDepartment().getDepartmentId());
+                m.put("departmentName", c.getNomenclature().getDepartment().getName());
+                m.put("nomenclatureYear", c.getNomenclature().getYear());
+            }
 
-            if (n.getDocumentType() != null) {
+            if (c.getCategory() != null) {
+                Map<String, Object> cat = new LinkedHashMap<>();
+                cat.put("categoryId", c.getCategory().getCategoryId());
+                cat.put("code", c.getCategory().getCode());
+                cat.put("name", c.getCategory().getName());
+                m.put("category", cat);
+            } else m.put("category", null);
+
+            if (c.getType() != null) {
                 Map<String, Object> t = new LinkedHashMap<>();
-                t.put("documentTypeId", n.getDocumentType().getDocumentTypeId());
-                t.put("code", n.getDocumentType().getCode());
-                t.put("name", n.getDocumentType().getName());
-                m.put("documentType", t);
-            } else {
-                m.put("documentType", null);
-            }
-
-            if (n.getCategory() != null) {
-                Map<String, Object> c = new LinkedHashMap<>();
-                c.put("categoryId", n.getCategory().getCategoryId());
-                c.put("code", n.getCategory().getCode());
-                c.put("name", n.getCategory().getName());
-                m.put("category", c);
-            } else {
-                m.put("category", null);
-            }
+                t.put("documentTypeId", c.getType().getDocumentTypeId());
+                t.put("code", c.getType().getCode());
+                t.put("name", c.getType().getName());
+                m.put("type", t);
+            } else m.put("type", null);
 
             return m;
         }).toList();

@@ -89,7 +89,7 @@
                     <textarea id="content" rows="6" placeholder="Краткое содержание или текст документа..."></textarea>
                 </div>
 
-                <!-- 1. Сначала КАТЕГОРИЯ -->
+                <!-- 1. КАТЕГОРИЯ (родитель) -->
                 <div class="form-group">
                     <label>Категория *</label>
                     <select id="categoryId" onchange="onCategoryChange()">
@@ -97,15 +97,15 @@
                     </select>
                 </div>
 
-                <!-- 2. Затем ТИП (фильтруется по категории) -->
+                <!-- 2. ТИП (дочерний, фильтруется по категории) -->
                 <div class="form-group">
                     <label>Тип документа *</label>
-                    <select id="documentTypeId" disabled onchange="onDocTypeChange()">
+                    <select id="typeId" disabled onchange="onTypeChange()">
                         <option value="">Сначала выберите категорию</option>
                     </select>
                 </div>
 
-                <!-- 3. И только потом НОМЕНКЛАТУРА -->
+                <!-- 3. ДЕЛО (номенклатура) -->
                 <div class="form-group">
                     <label>Номенклатура дел *</label>
                     <select id="nomenclatureId" disabled>
@@ -224,9 +224,9 @@
     const token = localStorage.getItem('token');
     if (!token) window.location.href = '/login';
 
-    let allDocTypes      = [];
-    let allCategories    = [];
-    let allNomenclatures = [];
+    let allCategories    = [];   // doc_categories (родитель)
+    let allDocTypes      = [];   // doc_types (дочерние)
+    let allNomenclatures = [];   // nomenclatures_cases (дела)
     let allUsers         = [];
     let allRouteStages   = [];
     let allActions       = [];
@@ -239,17 +239,17 @@
     async function loadReferences() {
         try {
             const headers = { 'Authorization': 'Bearer ' + token };
-            const [types, cats, noms, users, stages, actions] = await Promise.all([
-                fetch('/api/ref/doc-types',      { headers }).then(r => r.json()),
+            const [cats, types, noms, users, stages, actions] = await Promise.all([
                 fetch('/api/ref/doc-categories', { headers }).then(r => r.json()),
+                fetch('/api/ref/doc-types',      { headers }).then(r => r.json()),
                 fetch('/api/ref/nomenclatures',  { headers }).then(r => r.json()),
                 fetch('/api/ref/users',          { headers }).then(r => r.json()),
                 fetch('/api/ref/route-stages',   { headers }).then(r => r.json()),
                 fetch('/api/ref/doc-actions',    { headers }).then(r => r.json())
             ]);
 
-            allDocTypes      = (types || []).filter(t => t.isActive !== false);
             allCategories    = (cats  || []).filter(c => c.isActive !== false);
+            allDocTypes      = (types || []).filter(t => t.isActive !== false);
             allNomenclatures = (noms  || []).filter(n => n.isActive !== false);
             allUsers         = (users || []).filter(u => u.isActive !== false);
             allRouteStages   = stages || [];
@@ -281,24 +281,22 @@
         return s;
     }
 
-    // Заполняем выпадающий список КАТЕГОРИЙ
     function populateCategories() {
         const sel = document.getElementById('categoryId');
         if (!allCategories.length) {
-            sel.innerHTML = '<option value="">Нет доступных категорий</option>';
+            sel.innerHTML = '<option value="">Нет категорий</option>';
             return;
         }
         sel.innerHTML = '<option value="">Выберите категорию</option>' +
             allCategories.map(c => `<option value="${c.categoryId}">${escapeHtml(c.name)}</option>`).join('');
     }
 
-    // Обработчик выбора категории
+    // при смене КАТЕГОРИИ — загружаем ТИПЫ этой категории
     function onCategoryChange() {
         const catId = parseInt(document.getElementById('categoryId').value);
-        const typeSelect = document.getElementById('documentTypeId');
+        const typeSelect = document.getElementById('typeId');
         const nomSelect  = document.getElementById('nomenclatureId');
 
-        // Сбрасываем тип и номенклатуру при смене категории
         typeSelect.innerHTML = '<option value="">Сначала выберите категорию</option>';
         typeSelect.disabled = true;
         nomSelect.innerHTML = '<option value="">Сначала выберите тип</option>';
@@ -306,56 +304,50 @@
 
         if (!catId) return;
 
-        // Ищем все типы, которые относятся к выбранной категории
-        // (в базе данных тип привязан к категории через поле documentType)
-        const cat = allCategories.find(c => c.categoryId === catId);
+        const filtered = allDocTypes.filter(t =>
+            t.category && t.category.categoryId === catId);
 
-        if (cat && cat.documentType) {
-            // Показываем доступные типы (обычно он один, так как связь жесткая)
-            typeSelect.innerHTML = '<option value="">Выберите тип</option>' +
-                `<option value="${cat.documentType.documentTypeId}">${escapeHtml(cat.documentType.name)}</option>`;
-            typeSelect.disabled = false;
-        } else {
-            typeSelect.innerHTML = '<option value="">Для этой категории нет доступных типов</option>';
-            typeSelect.disabled = true;
+        if (!filtered.length) {
+            typeSelect.innerHTML = '<option value="">Нет типов для этой категории</option>';
+            return;
         }
+        typeSelect.innerHTML = '<option value="">Выберите тип</option>' +
+            filtered.map(t => `<option value="${t.documentTypeId}">${escapeHtml(t.name)}</option>`).join('');
+        typeSelect.disabled = false;
     }
 
-    // Обработчик выбора типа
-    function onDocTypeChange() {
-        const typeId = parseInt(document.getElementById('documentTypeId').value);
+    // при смене ТИПА — загружаем ДЕЛА по категории+типу
+    function onTypeChange() {
+        const typeId = parseInt(document.getElementById('typeId').value);
         const catId  = parseInt(document.getElementById('categoryId').value);
         const nomSelect = document.getElementById('nomenclatureId');
 
-        // Сбрасываем номенклатуры при смене типа
         nomSelect.innerHTML = '<option value="">Сначала выберите тип</option>';
         nomSelect.disabled = true;
 
         if (!typeId || !catId) return;
 
-        // Фильтруем номенклатуры по выбранному типу и категории
         const filtered = allNomenclatures.filter(function (n) {
-            if (n.documentType && n.documentType.documentTypeId !== typeId) return false;
             if (n.category && n.category.categoryId !== catId) return false;
+            if (n.type && n.type.documentTypeId !== typeId) return false;
             return true;
         });
 
         if (!filtered.length) {
-            nomSelect.innerHTML = '<option value="">Нет подходящих номенклатур для выбранного типа</option>';
-            nomSelect.disabled = true;
+            nomSelect.innerHTML = '<option value="">Нет подходящих номенклатур</option>';
             return;
         }
-
         nomSelect.innerHTML = '<option value="">Выберите номенклатуру</option>' +
             filtered.map(n => `<option value="${n.nomenclatureId}">${escapeHtml(n.caseCode)} — ${escapeHtml(n.title)}</option>`).join('');
         nomSelect.disabled = false;
     }
 
-    function getSelectedTypeCode() {
-        const typeId = parseInt(document.getElementById('documentTypeId').value);
-        if (!typeId) return null;
-        const t = allDocTypes.find(x => x.documentTypeId === typeId);
-        return t ? t.code : null;
+    // код КАТЕГОРИИ (родителя) — используется для определения обязательных этапов
+    function getSelectedCategoryCode() {
+        const catId = parseInt(document.getElementById('categoryId').value);
+        if (!catId) return null;
+        const c = allCategories.find(x => x.categoryId === catId);
+        return c ? c.code : null;
     }
 
     function onFilesSelected(event) {
@@ -419,8 +411,8 @@
 
         const title = document.getElementById('title').value.trim();
         if (!title) { showError('Введите название документа'); return; }
-        if (!document.getElementById('categoryId').value)     { showError('Выберите категорию'); return; }
-        if (!document.getElementById('documentTypeId').value) { showError('Выберите тип документа'); return; }
+        if (!document.getElementById('categoryId').value) { showError('Выберите категорию'); return; }
+        if (!document.getElementById('typeId').value)     { showError('Выберите тип документа'); return; }
         if (!document.getElementById('nomenclatureId').value) { showError('Выберите номенклатуру дел'); return; }
 
         if (!allUsers.length) { showError('Справочник пользователей не загружен'); return; }
@@ -446,9 +438,10 @@
             if (el) el.value = '';
         });
 
-        const typeCode = getSelectedTypeCode();
-        document.getElementById('blockExecute').style.display = (typeCode === 'ADMINISTRATIVE') ? 'block' : 'none';
-        document.getElementById('blockRead').style.display    = (typeCode === 'ORGANIZATIONAL') ? 'block' : 'none';
+        // определяем ветку по КОДУ КАТЕГОРИИ
+        const categoryCode = getSelectedCategoryCode();
+        document.getElementById('blockExecute').style.display = (categoryCode === 'ADMINISTRATIVE') ? 'block' : 'none';
+        document.getElementById('blockRead').style.display    = (categoryCode === 'ORGANIZATIONAL') ? 'block' : 'none';
 
         document.getElementById('routeModal').classList.add('open');
     }
@@ -493,22 +486,22 @@
             validateDeadline(deadlineReview,   'Рассмотрение');
 
             const stages = [
-                { stageCode: approvalStage.code, actionCode: approveAction.code,   assigneeId: parseInt(approvalId), deadline: deadlineApproval },
-                { stageCode: signStage.code,     actionCode: signAction.code,      assigneeId: parseInt(signId),     deadline: deadlineSign },
-                { stageCode: registerStage.code, actionCode: registerAction.code,  assigneeId: parseInt(registerId), deadline: deadlineRegister },
-                { stageCode: reviewStage.code,   actionCode: reviewAction.code,    assigneeId: parseInt(reviewId),   deadline: deadlineReview }
+                { stageCode: approvalStage.code, actionCode: approveAction.code,  assigneeId: parseInt(approvalId), deadline: deadlineApproval },
+                { stageCode: signStage.code,     actionCode: signAction.code,     assigneeId: parseInt(signId),     deadline: deadlineSign },
+                { stageCode: registerStage.code, actionCode: registerAction.code, assigneeId: parseInt(registerId), deadline: deadlineRegister },
+                { stageCode: reviewStage.code,   actionCode: reviewAction.code,   assigneeId: parseInt(reviewId),   deadline: deadlineReview }
             ];
 
-            const typeCode = getSelectedTypeCode();
+            const categoryCode = getSelectedCategoryCode();
 
-            if (typeCode === 'ADMINISTRATIVE') {
+            if (categoryCode === 'ADMINISTRATIVE') {
                 const executeId = document.getElementById('assigneeExecute').value;
                 const deadlineExecute = readDeadline('deadlineExecute');
                 if (!executeId) throw new Error('Выберите исполнителя для исполнения');
                 validateDeadline(deadlineExecute, 'Исполнение');
                 if (!executeStage || !executeAction) throw new Error('В справочнике нет этапа EXECUTE');
                 stages.push({ stageCode: executeStage.code, actionCode: executeAction.code, assigneeId: parseInt(executeId), deadline: deadlineExecute });
-            } else if (typeCode === 'ORGANIZATIONAL') {
+            } else if (categoryCode === 'ORGANIZATIONAL') {
                 const readId = document.getElementById('assigneeRead').value;
                 const deadlineRead = readDeadline('deadlineRead');
                 if (!readId) throw new Error('Выберите сотрудника для ознакомления');
@@ -530,21 +523,21 @@
     }
 
     async function createDocument() {
-        const title = document.getElementById('title').value.trim();
-        const documentTypeId = document.getElementById('documentTypeId').value;
+        const title          = document.getElementById('title').value.trim();
         const categoryId     = document.getElementById('categoryId').value;
+        const typeId         = document.getElementById('typeId').value;
         const nomenclatureId = document.getElementById('nomenclatureId').value;
 
         if (!title)          throw new Error('Введите название документа');
-        if (!documentTypeId) throw new Error('Выберите тип документа');
         if (!categoryId)     throw new Error('Выберите категорию');
+        if (!typeId)         throw new Error('Выберите тип');
         if (!nomenclatureId) throw new Error('Выберите номенклатуру дел');
 
         const payload = {
             title,
             content: document.getElementById('content').value || '',
-            documentTypeId: parseInt(documentTypeId),
             categoryId: parseInt(categoryId),
+            typeId: parseInt(typeId),
             nomenclatureId: parseInt(nomenclatureId)
         };
 

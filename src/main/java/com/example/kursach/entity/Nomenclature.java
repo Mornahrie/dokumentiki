@@ -3,11 +3,9 @@ package com.example.kursach.entity;
 import jakarta.persistence.*;
 
 @Entity
-@Table(
-        name = "nomenclatures",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"department_id", "case_code"})
-)
+@Table(name = "nomenclatures")
 public class Nomenclature {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "nomenclature_id")
@@ -17,22 +15,11 @@ public class Nomenclature {
     @JoinColumn(name = "department_id", nullable = false)
     private Department department;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "document_type_id")
-    private DocType documentType;
+    @Column(name = "name", nullable = false, length = 100)
+    private String name;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "category_id")
-    private DocCategory category;
-
-    @Column(name = "case_code", nullable = false, length = 20)
-    private String caseCode;
-
-    @Column(name = "title", nullable = false, length = 255)
-    private String title;
-
-    @Column(name = "retention_period")
-    private Integer retentionPeriod;
+    @Column(name = "year", nullable = false)
+    private Integer year;
 
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
@@ -43,20 +30,11 @@ public class Nomenclature {
     public Department getDepartment() { return department; }
     public void setDepartment(Department department) { this.department = department; }
 
-    public DocType getDocumentType() { return documentType; }
-    public void setDocumentType(DocType documentType) { this.documentType = documentType; }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
 
-    public DocCategory getCategory() { return category; }
-    public void setCategory(DocCategory category) { this.category = category; }
-
-    public String getCaseCode() { return caseCode; }
-    public void setCaseCode(String caseCode) { this.caseCode = caseCode; }
-
-    public String getTitle() { return title; }
-    public void setTitle(String title) { this.title = title; }
-
-    public Integer getRetentionPeriod() { return retentionPeriod; }
-    public void setRetentionPeriod(Integer retentionPeriod) { this.retentionPeriod = retentionPeriod; }
+    public Integer getYear() { return year; }
+    public void setYear(Integer year) { this.year = year; }
 
     public Boolean getIsActive() { return isActive; }
     public void setIsActive(Boolean isActive) { this.isActive = isActive; }
