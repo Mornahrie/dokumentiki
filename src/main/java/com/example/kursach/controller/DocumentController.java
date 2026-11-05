@@ -1,5 +1,6 @@
 package com.example.kursach.controller;
 
+import com.example.kursach.dto.UserShortDto;
 import com.example.kursach.entity.*;
 import com.example.kursach.repository.*;
 import com.example.kursach.util.JwtUtil;
@@ -38,12 +39,8 @@ public class DocumentController {
             List.of("APPROVE", "SIGN", "REGISTER", "REVIEW", "EXECUTE", "READ");
 
     private static final Set<String> OVERRIDE_ACTIONS = Set.of("REJECT", "REDIRECT");
-
-    private static final Set<String> NON_TERMINAL_ROUTE_STATUSES =
-            Set.of("PENDING", "IN_PROGRESS", "WAITING");
-
+    private static final Set<String> NON_TERMINAL_ROUTE_STATUSES = Set.of("PENDING", "IN_PROGRESS", "WAITING");
     private static final Set<String> EDITABLE_DOC_STATUSES = Set.of("DRAFT", "REVISION");
-
     private static final Set<String> LOCKED_FILE_STATUSES = Set.of("COMPLETED", "ARCHIVED");
 
     private final DocumentRepository documentRepository;
@@ -193,21 +190,43 @@ public class DocumentController {
         }
         return ResponseEntity.ok(result);
     }
-// =====================================================================
+
+    // =====================================================================
+    // ПОИСК ПОДХОДЯЩИХ СОТРУДНИКОВ
+    // =====================================================================
+    @PostMapping("/eligible-users")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> getEligibleUsers(
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader,
+            @RequestBody Map<String, Object> body) {
+        Long userId = extractUserId(authHeader);
+        User currentUser = userRepository.findById(userId).orElseThrow();
+
+        Long docId = asLong(body.get("documentId"));
+        String actionCode = (String) body.get("actionCode");
+
+        if (docId == null || actionCode == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Не указан documentId или actionCode"));
+        }
+
+        Document doc = documentRepository.findById(docId).orElseThrow();
+
+        if (!hasAccessToDocument(currentUser, doc)) {
+            return ResponseEntity.status(403).body(Map.of("error", "Нет доступа к документу"));
+        }
+
+        List<User> allActive = userRepository.findByIsActiveTrue();
+        List<UserShortDto> eligible = allActive.stream()
+                .filter(u -> hasPermission(u, actionCode, doc))
+                .map(UserShortDto::from)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(eligible);
+    }
+
+    // =====================================================================
     // ОТМЕТКА ПРОЧТЕНИЯ ЗАДАЧИ
     // =====================================================================
-    /**
-     * Отмечает задачу текущего исполнителя прочитанной.
-     *
-     * Логика по ТЗ:
-     *  - При создании маршрута первый этап получает PENDING («Не прочитано»),
-     *    остальные — WAITING («Ожидает»).
-     *  - Как только исполнитель заходит в поручение, его активная задача
-     *    переходит из PENDING в IN_PROGRESS («В процессе»).
-     *
-     * Действие выполняется только для задач текущего пользователя,
-     * находящихся в PENDING, и только если все более ранние этапы завершены.
-     */
     @PostMapping("/{id}/mark-read")
     @Transactional
     public ResponseEntity<?> markAsRead(
@@ -217,7 +236,6 @@ public class DocumentController {
         Long userId = extractUserId(authHeader);
         Document doc = documentRepository.findById(id).orElseThrow();
 
-        // Нет доступа — нечего отмечать (можно тихо выйти)
         User user = userRepository.findById(userId).orElse(null);
         if (user == null || !hasAccessToDocument(user, doc)) {
             return ResponseEntity.status(403).body(Map.of("error", "Нет доступа"));
@@ -233,7 +251,6 @@ public class DocumentController {
             if (!r.getAssignedUser().getUserId().equals(userId)) continue;
             if (!"PENDING".equals(r.getStatus())) continue;
 
-            // Проверяем, что нет незавершённых более ранних этапов
             boolean earlierActive = routes.stream()
                     .filter(other -> other.getStepNumber() < r.getStepNumber())
                     .anyMatch(other -> NON_TERMINAL_ROUTE_STATUSES.contains(other.getStatus()));
@@ -252,6 +269,7 @@ public class DocumentController {
                         : "Активных задач для прочтения не найдено"
         ));
     }
+
     // =====================================================================
     // СОЗДАНИЕ / РЕДАКТИРОВАНИЕ
     // =====================================================================
@@ -265,10 +283,6 @@ public class DocumentController {
         Long userId = extractUserId(authHeader);
         User user = userRepository.findById(userId).orElseThrow();
 
-        String title = (String) body.get("title");
-        if (title == null || title.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Название документа обязательно"));
-        }
         if (body.get("categoryId") == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "Категория обязательна"));
         }
@@ -286,14 +300,12 @@ public class DocumentController {
         NomenclatureCase nomCase = nomenclatureCaseRepository.findById(asLong(body.get("nomenclatureId")))
                 .orElseThrow(() -> new IllegalArgumentException("Номенклатура дел не найдена"));
 
-        // Тип должен принадлежать выбранной категории
         if (type.getCategory() == null
                 || !type.getCategory().getCategoryId().equals(category.getCategoryId())) {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "Тип документа не относится к выбранной категории"));
         }
 
-        // Дело должно принадлежать подразделению автора
         if (nomCase.getNomenclature() == null
                 || nomCase.getNomenclature().getDepartment() == null
                 || !nomCase.getNomenclature().getDepartment().getDepartmentId()
@@ -302,20 +314,19 @@ public class DocumentController {
                     .body(Map.of("error", "Номенклатура принадлежит другому подразделению"));
         }
 
-        // Дело должно соответствовать категории и типу
-        if (nomCase.getCategory() != null
-                && !nomCase.getCategory().getCategoryId().equals(category.getCategoryId())) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Номенклатура не подходит для выбранной категории"));
-        }
-        if (nomCase.getType() != null
-                && !nomCase.getType().getDocumentTypeId().equals(type.getDocumentTypeId())) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Номенклатура не подходит для выбранного типа"));
-        }
-
         Document doc = new Document();
-        doc.setTitle(title);
+
+        String initial = user.getFirstName() != null && !user.getFirstName().isEmpty() ? user.getFirstName().substring(0, 1) + "." : "";
+        String middle = user.getMiddleName() != null && !user.getMiddleName().isEmpty() ? user.getMiddleName().substring(0, 1) + "." : "";
+        String generatedTitle = String.format("%s %s от %s %s %s",
+                category.getName(),
+                type.getName(),
+                user.getLastName(),
+                initial,
+                middle
+        ).replaceAll("\\s+", " ").trim();
+
+        doc.setTitle(generatedTitle);
         doc.setContent((String) body.getOrDefault("content", ""));
         doc.setCategory(category);
         doc.setDocumentType(type);
@@ -354,13 +365,6 @@ public class DocumentController {
                     .body(Map.of("error", "Редактирование возможно только в черновике или на доработке"));
         }
 
-        if (body.containsKey("title")) {
-            String t = (String) body.get("title");
-            if (t == null || t.isBlank()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Название не может быть пустым"));
-            }
-            doc.setTitle(t);
-        }
         if (body.containsKey("content")) doc.setContent((String) body.get("content"));
 
         DocCategory newCategory = doc.getCategory();
@@ -398,16 +402,6 @@ public class DocumentController {
                     .equals(user.getDepartment().getDepartmentId())) {
                 return ResponseEntity.badRequest()
                         .body(Map.of("error", "Номенклатура принадлежит другому подразделению"));
-            }
-            if (nomCase.getCategory() != null && !nomCase.getCategory().getCategoryId()
-                    .equals(newCategory.getCategoryId())) {
-                return ResponseEntity.badRequest()
-                        .body(Map.of("error", "Номенклатура не подходит для выбранной категории"));
-            }
-            if (nomCase.getType() != null && !nomCase.getType().getDocumentTypeId()
-                    .equals(newType.getDocumentTypeId())) {
-                return ResponseEntity.badRequest()
-                        .body(Map.of("error", "Номенклатура не подходит для выбранного типа"));
             }
             doc.setNomenclature(nomCase);
         }
@@ -518,6 +512,42 @@ public class DocumentController {
     }
 
     // =====================================================================
+    // ПРЕДПРОСМОТР РЕГИСТРАЦИОННОГО НОМЕРА
+    // =====================================================================
+    @GetMapping("/{id}/preview-reg-number")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> previewRegNumber(
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader,
+            @PathVariable Long id) {
+        Long userId = extractUserId(authHeader);
+        User user = userRepository.findById(userId).orElseThrow();
+        Document doc = documentRepository.findById(id).orElseThrow();
+
+        if (!hasAccessToDocument(user, doc)) {
+            return ResponseEntity.status(403).body(Map.of("error", "Нет доступа"));
+        }
+
+        if (doc.getNomenclature() == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Нет номенклатуры"));
+        }
+
+        String deptCode = doc.getDepartment().getCode();
+        String caseCode = doc.getNomenclature().getCaseCode();
+        long seq = documentRepository.countRegistrationsByDeptAndCase(
+                doc.getDepartment().getDepartmentId(),
+                doc.getNomenclature().getCaseId()) + 1;
+        String regNumber = String.format("%s-%s-%03d", deptCode, caseCode, seq);
+
+        Optional<LocalDate> lastDate = documentRepository.findLastRegistrationDate(
+                doc.getDepartment().getDepartmentId(), doc.getNomenclature().getCaseId());
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("regNumber", regNumber);
+        result.put("lastRegistrationDate", lastDate.map(LocalDate::toString).orElse(null));
+        return ResponseEntity.ok(result);
+    }
+
+    // =====================================================================
     // МАРШРУТ
     // =====================================================================
 
@@ -544,6 +574,8 @@ public class DocumentController {
                     .body(Map.of("error", "Маршрут можно создать только для черновика или документа на доработке"));
         }
 
+        boolean isPaperFlow = Boolean.TRUE.equals(body.get("isPaperFlow"));
+
         List<DocRoute> previousRoutes = docRouteRepository.findByDocumentDocumentIdOrderByStepNumberAsc(id);
         LocalDateTime now = LocalDateTime.now();
         for (DocRoute r : previousRoutes) {
@@ -564,6 +596,51 @@ public class DocumentController {
             return ResponseEntity.badRequest().body(Map.of("error", "Маршрут не может быть пустым"));
         }
 
+        int step = 1;
+
+        if (isPaperFlow) {
+            String approveStageCode = (String) body.getOrDefault("paperApproveStageCode", "APPROVE");
+            String signStageCode = (String) body.getOrDefault("paperSignStageCode", "SIGN");
+            String approveActionCode = (String) body.getOrDefault("paperApproveActionCode", "APPROVE");
+            String signActionCode = (String) body.getOrDefault("paperSignActionCode", "SIGN");
+
+            Long approverId = asLong(body.get("paperApproverId"));
+            Long signerId = asLong(body.get("paperSignerId"));
+
+            if (approverId == null || signerId == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Укажите, кто согласовал и подписал документ на бумаге"));
+            }
+
+            User approver = userRepository.findById(approverId).orElseThrow(() -> new IllegalArgumentException("Согласующий не найден"));
+            User signer = userRepository.findById(signerId).orElseThrow(() -> new IllegalArgumentException("Подписант не найден"));
+
+            DocRoute approveRoute = new DocRoute();
+            approveRoute.setDocument(doc);
+            approveRoute.setStage(routeStageRepository.findByCode(approveStageCode).orElseThrow(() -> new IllegalArgumentException("Неизвестный этап: " + approveStageCode)));
+            approveRoute.setAction(docActionRepository.findByCode(approveActionCode).orElseThrow(() -> new IllegalArgumentException("Неизвестное действие: " + approveActionCode)));
+            approveRoute.setAssignedUser(approver);
+            approveRoute.setStepNumber(step++);
+            approveRoute.setStatus("COMPLETED");
+            approveRoute.setCreatedAt(now);
+            approveRoute.setStartedAt(now);
+            approveRoute.setCompletedAt(now);
+            approveRoute.setComment("Выполнено на бумаге");
+            docRouteRepository.save(approveRoute);
+
+            DocRoute signRoute = new DocRoute();
+            signRoute.setDocument(doc);
+            signRoute.setStage(routeStageRepository.findByCode(signStageCode).orElseThrow(() -> new IllegalArgumentException("Неизвестный этап: " + signStageCode)));
+            signRoute.setAction(docActionRepository.findByCode(signActionCode).orElseThrow(() -> new IllegalArgumentException("Неизвестное действие: " + signActionCode)));
+            signRoute.setAssignedUser(signer);
+            signRoute.setStepNumber(step++);
+            signRoute.setStatus("COMPLETED");
+            signRoute.setCreatedAt(now);
+            signRoute.setStartedAt(now);
+            signRoute.setCompletedAt(now);
+            signRoute.setComment("Выполнено на бумаге");
+            docRouteRepository.save(signRoute);
+        }
+
         List<Map<String, Object>> stages = new ArrayList<>();
         for (Object o : rawStages) {
             if (!(o instanceof Map)) {
@@ -575,31 +652,18 @@ public class DocumentController {
         }
 
         int prevIdx = -1;
-        Set<String> providedActions = new LinkedHashSet<>();
         for (Map<String, Object> s : stages) {
             String action = (String) s.get("actionCode");
             int idx = STAGE_ORDER.indexOf(action);
             if (idx < 0) {
-                return ResponseEntity.badRequest()
-                        .body(Map.of("error", "Недопустимое действие в маршруте: " + action));
+                return ResponseEntity.badRequest().body(Map.of("error", "Недопустимое действие: " + action));
             }
             if (idx <= prevIdx) {
-                return ResponseEntity.badRequest()
-                        .body(Map.of("error", "Нарушена последовательность этапов: " + action));
+                return ResponseEntity.badRequest().body(Map.of("error", "Нарушена последовательность: " + action));
             }
             prevIdx = idx;
-            providedActions.add(action);
         }
 
-        Set<String> required = requiredActionsFor(doc);
-        Set<String> missing = new LinkedHashSet<>(required);
-        missing.removeAll(providedActions);
-        if (!missing.isEmpty()) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "В маршруте отсутствуют обязательные этапы: " + missing));
-        }
-
-        int step = 1;
         LocalDateTime previousDeadline = null;
 
         for (Map<String, Object> stageMap : stages) {
@@ -608,42 +672,33 @@ public class DocumentController {
             String actionCode = (String) stageMap.get("actionCode");
 
             if (assigneeId == null) {
-                return ResponseEntity.badRequest()
-                        .body(Map.of("error", "Не указан исполнитель для этапа " + actionCode));
+                return ResponseEntity.badRequest().body(Map.of("error", "Не указан исполнитель для этапа " + actionCode));
             }
             User assignee = userRepository.findById(assigneeId).orElse(null);
             if (assignee == null) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Пользователь не найден"));
             }
             if (!Boolean.TRUE.equals(assignee.getIsActive())) {
-                return ResponseEntity.badRequest()
-                        .body(Map.of("error", "Пользователь " + assignee.getTabNumber() + " деактивирован"));
+                return ResponseEntity.badRequest().body(Map.of("error", "Пользователь " + assignee.getTabNumber() + " деактивирован"));
             }
             if (!hasPermission(assignee, actionCode, doc)) {
-                return ResponseEntity.status(403)
-                        .body(Map.of("error", "У пользователя " + assignee.getTabNumber()
-                                + " нет полномочий на действие " + actionCode));
+                return ResponseEntity.status(403).body(Map.of("error", "У пользователя " + assignee.getTabNumber() + " нет полномочий на " + actionCode));
             }
 
             if (stageMap.get("deadline") == null || stageMap.get("deadline").toString().isBlank()) {
-                return ResponseEntity.badRequest()
-                        .body(Map.of("error", "Не указан срок для этапа " + actionCode));
+                return ResponseEntity.badRequest().body(Map.of("error", "Не указан срок для этапа " + actionCode));
             }
             LocalDateTime deadline;
             try {
                 deadline = LocalDateTime.parse(stageMap.get("deadline").toString());
             } catch (DateTimeParseException e) {
-                return ResponseEntity.badRequest()
-                        .body(Map.of("error", "Неверный формат срока для этапа " + actionCode));
+                return ResponseEntity.badRequest().body(Map.of("error", "Неверный формат срока для этапа " + actionCode));
             }
             if (deadline.isBefore(LocalDateTime.now())) {
-                return ResponseEntity.badRequest()
-                        .body(Map.of("error", "Срок не может быть в прошлом (" + actionCode + ")"));
+                return ResponseEntity.badRequest().body(Map.of("error", "Срок не может быть в прошлом (" + actionCode + ")"));
             }
-
             if (previousDeadline != null && deadline.isBefore(previousDeadline)) {
-                return ResponseEntity.badRequest()
-                        .body(Map.of("error", "Срок этапа " + actionCode + " не может быть раньше срока предыдущего этапа"));
+                return ResponseEntity.badRequest().body(Map.of("error", "Срок этапа " + actionCode + " не может быть раньше предыдущего"));
             }
             previousDeadline = deadline;
 
@@ -696,9 +751,11 @@ public class DocumentController {
         if (doc.getNomenclature() == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "У документа не задана номенклатура дел"));
         }
-        if (!"IN_PROGRESS".equals(doc.getStatus())) {
+
+        boolean isDraft = "DRAFT".equals(doc.getStatus());
+        if (!"IN_PROGRESS".equals(doc.getStatus()) && !isDraft) {
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Регистрация возможна только для документа в работе"));
+                    .body(Map.of("error", "Регистрация возможна только для черновика или документа в работе"));
         }
         if (!hasPermission(user, "REGISTER", doc)) {
             return ResponseEntity.status(403)
@@ -707,22 +764,24 @@ public class DocumentController {
 
         List<DocRoute> routes = docRouteRepository.findByDocumentDocumentIdOrderByStepNumberAsc(id);
 
-        boolean approveDone = routes.stream()
-                .anyMatch(r -> "APPROVE".equals(r.getAction().getCode())
-                        && "COMPLETED".equals(r.getStatus()));
-        boolean signDone = routes.stream()
-                .anyMatch(r -> "SIGN".equals(r.getAction().getCode())
-                        && "COMPLETED".equals(r.getStatus()));
-        boolean reviewExists = routes.stream()
-                .anyMatch(r -> "REVIEW".equals(r.getAction().getCode()));
+        if (!isDraft) {
+            boolean approveDone = routes.stream()
+                    .anyMatch(r -> "APPROVE".equals(r.getAction().getCode())
+                            && "COMPLETED".equals(r.getStatus()));
+            boolean signDone = routes.stream()
+                    .anyMatch(r -> "SIGN".equals(r.getAction().getCode())
+                            && "COMPLETED".equals(r.getStatus()));
+            boolean reviewExists = routes.stream()
+                    .anyMatch(r -> "REVIEW".equals(r.getAction().getCode()));
 
-        if (!approveDone || !signDone) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Сначала должны быть завершены согласование и подписание"));
-        }
-        if (!reviewExists) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "В маршруте отсутствует этап рассмотрения"));
+            if (!approveDone || !signDone) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "Сначала должны быть завершены согласование и подписание"));
+            }
+            if (!reviewExists) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "В маршруте отсутствует этап рассмотрения"));
+            }
         }
 
         DocRoute registerRoute = routes.stream()
@@ -756,6 +815,9 @@ public class DocumentController {
         LocalDateTime now = LocalDateTime.now();
         doc.setRegistrationNumber(regNumber);
         doc.setRegistrationDate(LocalDate.now());
+
+        doc.setTitle(doc.getTitle() + " № " + regNumber + " от " + LocalDate.now());
+
         doc.setUpdatedAt(now);
         documentRepository.save(doc);
 
@@ -776,10 +838,16 @@ public class DocumentController {
             }
         }
 
+        if (isDraft && routes.isEmpty()) {
+            doc.setStatus("IN_PROGRESS");
+            documentRepository.save(doc);
+        }
+
         logHistory(doc, user, "REGISTER", null);
         return ResponseEntity.ok(Map.of(
                 "message", "Документ зарегистрирован",
                 "registrationNumber", regNumber,
+                "registrationDate", doc.getRegistrationDate().toString(),
                 "reviewActivated", reviewActivated
         ));
     }
@@ -873,20 +941,6 @@ public class DocumentController {
                     .body(Map.of("error", "Документ ещё не зарегистрирован"));
         }
 
-        if ("EXECUTE".equals(actionCode)) {
-            if (doc.getRegistrationNumber() == null) {
-                return ResponseEntity.badRequest()
-                        .body(Map.of("error", "Документ ещё не зарегистрирован"));
-            }
-            boolean reviewDone = allRoutes.stream()
-                    .anyMatch(r -> "REVIEW".equals(r.getAction().getCode())
-                            && "COMPLETED".equals(r.getStatus()));
-            if (!reviewDone) {
-                return ResponseEntity.badRequest()
-                        .body(Map.of("error", "Документ не прошёл рассмотрение"));
-            }
-        }
-
         LocalDateTime now = LocalDateTime.now();
 
         if ("REJECT".equals(actionCode)) {
@@ -956,22 +1010,68 @@ public class DocumentController {
             return ResponseEntity.ok(Map.of("message", "Задача перенаправлена"));
         }
 
+        if ("REVIEW".equals(actionCode)) {
+            List<Object> executorIdsObj = (List<Object>) body.get("executorIds");
+            if (executorIdsObj == null || executorIdsObj.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Не выбран ни один исполнитель"));
+            }
+
+            String followUpActionCode = "ADMINISTRATIVE".equals(doc.getCategory().getCode()) ? "EXECUTE" : "READ";
+            DocAction followUpAction = docActionRepository.findByCode(followUpActionCode)
+                    .orElseThrow(() -> new IllegalArgumentException("Действие " + followUpActionCode + " не найдено"));
+            RouteStage followUpStage = routeStageRepository.findByCode(followUpActionCode)
+                    .orElseThrow(() -> new IllegalArgumentException("Этап " + followUpActionCode + " не найден"));
+
+            for (Object execIdObj : executorIdsObj) {
+                Long newAssigneeId = asLong(execIdObj);
+                User newAssignee = userRepository.findById(newAssigneeId).orElse(null);
+                if (newAssignee == null || !Boolean.TRUE.equals(newAssignee.getIsActive())) {
+                    return ResponseEntity.badRequest().body(Map.of("error", "Выбранный исполнитель не найден или деактивирован"));
+                }
+                if (!hasPermission(newAssignee, followUpActionCode, doc)) {
+                    return ResponseEntity.status(403).body(Map.of("error", "У пользователя " + newAssignee.getTabNumber() + " нет полномочий на " + followUpActionCode));
+                }
+
+                DocRoute newRoute = new DocRoute();
+                newRoute.setDocument(doc);
+                newRoute.setStage(followUpStage);
+                newRoute.setAction(followUpAction);
+                newRoute.setAssignedUser(newAssignee);
+                newRoute.setStepNumber(activeRoute.getStepNumber() + 1);
+                newRoute.setStatus("PENDING");
+                newRoute.setCreatedAt(now);
+                newRoute.setStartedAt(now);
+
+                String deadlineStr = (String) body.get("deadline");
+                if (deadlineStr != null && !deadlineStr.isEmpty()) {
+                    newRoute.setDeadline(LocalDateTime.parse(deadlineStr));
+                } else {
+                    newRoute.setDeadline(now.plusDays(7));
+                }
+
+                docRouteRepository.save(newRoute);
+            }
+        }
+
         activeRoute.setStatus("COMPLETED");
         activeRoute.setComment(comment);
         activeRoute.setCompletedAt(now);
         docRouteRepository.save(activeRoute);
 
         List<DocRoute> fresh = docRouteRepository.findByDocumentDocumentIdOrderByStepNumberAsc(id);
-        Optional<DocRoute> nextWaiting = fresh.stream()
-                .filter(r -> r.getStepNumber() > activeRoute.getStepNumber())
-                .filter(r -> "WAITING".equals(r.getStatus()))
-                .filter(r -> !"REVIEW".equals(r.getAction().getCode()))
-                .min(Comparator.comparingInt(DocRoute::getStepNumber));
-        nextWaiting.ifPresent(r -> {
-            r.setStatus("PENDING");
-            r.setStartedAt(now);
-            docRouteRepository.save(r);
-        });
+
+        if (!"REVIEW".equals(actionCode)) {
+            Optional<DocRoute> nextWaiting = fresh.stream()
+                    .filter(r -> r.getStepNumber() > activeRoute.getStepNumber())
+                    .filter(r -> "WAITING".equals(r.getStatus()))
+                    .filter(r -> !"REVIEW".equals(r.getAction().getCode()))
+                    .min(Comparator.comparingInt(DocRoute::getStepNumber));
+            nextWaiting.ifPresent(r -> {
+                r.setStatus("PENDING");
+                r.setStartedAt(now);
+                docRouteRepository.save(r);
+            });
+        }
 
         boolean anyActive = docRouteRepository.findByDocumentDocumentIdOrderByStepNumberAsc(id)
                 .stream().anyMatch(r -> NON_TERMINAL_ROUTE_STATUSES.contains(r.getStatus()));
@@ -1066,20 +1166,6 @@ public class DocumentController {
         return isAdmin || isAuthor || isInRoute || sameDept;
     }
 
-    /**
-     * Обязательные действия определяются КОДОМ КАТЕГОРИИ (родитель).
-     */
-    private Set<String> requiredActionsFor(Document doc) {
-        Set<String> required = new LinkedHashSet<>(
-                List.of("APPROVE", "SIGN", "REGISTER", "REVIEW"));
-        if (doc.getCategory() != null) {
-            String code = doc.getCategory().getCode();
-            if ("ORGANIZATIONAL".equals(code)) required.add("READ");
-            else if ("ADMINISTRATIVE".equals(code)) required.add("EXECUTE");
-        }
-        return required;
-    }
-
     private boolean computeCanEdit(User user, Document doc) {
         if (!EDITABLE_DOC_STATUSES.contains(doc.getStatus())) return false;
         boolean isAuthor = doc.getAuthor().getUserId().equals(user.getUserId());
@@ -1089,8 +1175,12 @@ public class DocumentController {
 
     private boolean computeCanRegister(User user, Document doc, List<DocRoute> routes) {
         if (doc.getRegistrationNumber() != null) return false;
-        if (!"IN_PROGRESS".equals(doc.getStatus())) return false;
+        if (!"IN_PROGRESS".equals(doc.getStatus()) && !"DRAFT".equals(doc.getStatus())) return false;
         if (!hasPermission(user, "REGISTER", doc)) return false;
+
+        if ("DRAFT".equals(doc.getStatus())) {
+            return true;
+        }
 
         boolean approveDone = routes.stream()
                 .anyMatch(r -> "APPROVE".equals(r.getAction().getCode())
@@ -1111,6 +1201,9 @@ public class DocumentController {
     }
 
     private boolean hasPermission(User user, String actionCode, Document doc) {
+        // АДМИНИСТРАТОР ИМЕЕТ ПРАВО НА ЛЮБЫЕ ДЕЙСТВИЯ
+        if ("ADMIN".equals(user.getBaseRole().getCode())) return true;
+
         String permCode = switch (actionCode) {
             case "APPROVE"  -> "APPROVE_DOCUMENT";
             case "SIGN"     -> "SIGN_DOCUMENT";

@@ -19,9 +19,314 @@ var ACTIONS_MAP = {
 };
 
 var currentDocData = null;
-// В новой схеме БД "ADMINISTRATIVE" и "ORGANIZATIONAL" — это КОДЫ КАТЕГОРИЙ (doc_categories)
 var currentDocCategoryCode = null;
 var pendingNewFile = null;
+var currentRouteDocId = null;
+var isCreatingNewRoute = false;
+
+// Глобальные справочники для маршрута
+var allCategories    = [];
+var allDocTypes      = [];
+var allNomenclatures = [];
+var allUsers         = [];
+var allRouteStages   = [];
+var allActions       = [];
+var approvalStage, signStage, registerStage, reviewStage;
+var approveAction, signAction, registerAction, reviewAction;
+
+function findStage(codes, nameParts) {
+    let s = allRouteStages.find(x => codes.includes(x.code));
+    if (!s) s = allRouteStages.find(x => nameParts.some(n => (x.name || '').toLowerCase().includes(n)));
+    return s;
+}
+
+async function loadRouteReferences() {
+    try {
+        const headers = { 'Authorization': 'Bearer ' + token };
+        const [cats, types, noms, users, stages, actions] = await Promise.all([
+            fetch('/api/ref/doc-categories', { headers }).then(r => r.json()),
+            fetch('/api/ref/doc-types',      { headers }).then(r => r.json()),
+            fetch('/api/ref/nomenclatures',  { headers }).then(r => r.json()),
+            fetch('/api/ref/users',          { headers }).then(r => r.json()),
+            fetch('/api/ref/route-stages',   { headers }).then(r => r.json()),
+            fetch('/api/ref/doc-actions',    { headers }).then(r => r.json())
+        ]);
+
+        allCategories    = (cats  || []).filter(c => c.isActive !== false);
+        allDocTypes      = (types || []).filter(t => t.isActive !== false);
+        allNomenclatures = (noms  || []).filter(n => n.isActive !== false);
+        allUsers         = (users || []).filter(u => u.isActive !== false);
+        allRouteStages   = stages || [];
+        allActions       = actions || [];
+
+        approvalStage = findStage(['APPROVAL', 'APPROVE'],              ['согласован']);
+        signStage     = findStage(['SIGNING', 'SIGN'],                  ['подписан']);
+        registerStage = findStage(['REGISTRATION', 'REGISTER'],         ['регистрац']);
+        reviewStage   = findStage(['REVIEW', 'CONSIDERATION'],          ['рассмотрен']);
+
+        approveAction  = allActions.find(a => a.code === 'APPROVE');
+        signAction     = allActions.find(a => a.code === 'SIGN');
+        registerAction = allActions.find(a => a.code === 'REGISTER');
+        reviewAction   = allActions.find(a => a.code === 'REVIEW');
+
+        return true;
+    } catch (e) {
+        alert('Ошибка загрузки справочников: ' + e.message);
+        return false;
+    }
+}
+
+function populateRouteModalSelects() {
+    // Убрали вывод табельного номера, оставили только ФИО
+    const options = allUsers.map(u =>
+        `<option value="${u.userId}">${escapeHtml(u.lastName)} ${escapeHtml(u.firstName)} ${escapeHtml(u.middleName || '')}</option>`
+    ).join('');
+
+    ['assigneeApproval', 'assigneeSign', 'assigneeRegister', 'assigneeReview'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.innerHTML = '<option value="">Выберите</option>' + options;
+        el.value = '';
+    });
+
+    ['paperApprover', 'paperSigner'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.innerHTML = '<option value="">Выберите</option>' + options;
+        el.value = '';
+    });
+
+    ['deadlineApproval', 'deadlineSign', 'deadlineRegister', 'deadlineReview'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+}
+
+function togglePaperFlow() {
+    const isPaper = document.getElementById('isPaperFlow').checked;
+    const standardBlock = document.getElementById('standardStagesBlock');
+    const paperBlock = document.getElementById('paperHistoricalBlock');
+    const numRegister = document.getElementById('numRegister');
+    const numReview = document.getElementById('numReview');
+
+    if (isPaper) {
+        standardBlock.style.display = 'none';
+        paperBlock.style.display = 'block';
+        numRegister.textContent = '1';
+        numReview.textContent = '2';
+    } else {
+        standardBlock.style.display = 'block';
+        paperBlock.style.display = 'none';
+        numRegister.textContent = '3';
+        numReview.textContent = '4';
+    }
+}
+
+async function openRouteModalForNew() {
+    if (!document.getElementById('categoryId').value) { showError('Выберите категорию'); return; }
+    if (!document.getElementById('typeId').value)     { showError('Выберите тип документа'); return; }
+    if (!document.getElementById('nomenclatureId').value) { showError('Выберите номенклатуру дел'); return; }
+
+    const loaded = await loadRouteReferences();
+    if (!loaded) return;
+
+    populateRouteModalSelects();
+
+    document.getElementById('paperHistoricalBlock').style.display = 'none';
+    document.getElementById('standardStagesBlock').style.display = 'block';
+    document.getElementById('isPaperFlow').checked = false;
+    togglePaperFlow();
+
+    currentRouteDocId = null;
+    isCreatingNewRoute = true;
+
+    document.getElementById('routeModal').classList.add('open');
+}
+
+async function openRouteModalForExisting(docId) {
+    if (!currentDocData) return;
+
+    const loaded = await loadRouteReferences();
+    if (!loaded) return;
+
+    populateRouteModalSelects();
+
+    document.getElementById('paperHistoricalBlock').style.display = 'none';
+    document.getElementById('standardStagesBlock').style.display = 'block';
+    document.getElementById('isPaperFlow').checked = false;
+    togglePaperFlow();
+
+    currentRouteDocId = docId;
+    isCreatingNewRoute = false;
+
+    document.getElementById('routeModal').classList.add('open');
+}
+
+function closeRouteModal() {
+    document.getElementById('routeModal').classList.remove('open');
+    currentRouteDocId = null;
+    isCreatingNewRoute = false;
+}
+
+function readDeadline(inputId) {
+    const v = document.getElementById(inputId).value;
+    return v ? v : null;
+}
+
+function validateDeadline(value, label) {
+    if (!value) throw new Error('Укажите срок для этапа «' + label + '»');
+    const d = new Date(value);
+    if (isNaN(d.getTime())) throw new Error('Неверный формат срока для этапа «' + label + '»');
+    if (d.getTime() < Date.now()) throw new Error('Срок для этапа «' + label + '» не может быть в прошлом');
+}
+
+async function submitRoute() {
+    const modalError = document.getElementById('modalError');
+    if(modalError) modalError.style.display = 'none';
+
+    try {
+        const isPaperFlow = document.getElementById('isPaperFlow').checked;
+        const stages = [];
+
+        let paperApproverId = null;
+        let paperSignerId = null;
+
+        if (!isPaperFlow) {
+            const approvalId = document.getElementById('assigneeApproval').value;
+            const signId     = document.getElementById('assigneeSign').value;
+            if (!approvalId) throw new Error('Выберите исполнителя для согласования');
+            if (!signId)     throw new Error('Выберите исполнителя для подписания');
+
+            const dApprove = readDeadline('deadlineApproval');
+            const dSign = readDeadline('deadlineSign');
+            validateDeadline(dApprove, 'Согласование');
+            validateDeadline(dSign, 'Подписание');
+
+            stages.push({ stageCode: approvalStage.code, actionCode: approveAction.code, assigneeId: parseInt(approvalId), deadline: dApprove });
+            stages.push({ stageCode: signStage.code, actionCode: signAction.code, assigneeId: parseInt(signId), deadline: dSign });
+        } else {
+            paperApproverId = document.getElementById('paperApprover').value;
+            paperSignerId = document.getElementById('paperSigner').value;
+            if (!paperApproverId) throw new Error('Укажите, кто согласовал документ на бумаге');
+            if (!paperSignerId) throw new Error('Укажите, кто подписал документ на бумаге');
+        }
+
+        const registerId = document.getElementById('assigneeRegister').value;
+        const reviewId   = document.getElementById('assigneeReview').value;
+        if (!registerId) throw new Error('Выберите исполнителя для регистрации');
+        if (!reviewId)   throw new Error('Выберите исполнителя для рассмотрения');
+
+        const dRegister = readDeadline('deadlineRegister');
+        const dReview   = readDeadline('deadlineReview');
+        validateDeadline(dRegister, 'Регистрация');
+        validateDeadline(dReview, 'Рассмотрение');
+
+        stages.push({ stageCode: registerStage.code, actionCode: registerAction.code, assigneeId: parseInt(registerId), deadline: dRegister });
+        stages.push({ stageCode: reviewStage.code, actionCode: reviewAction.code, assigneeId: parseInt(reviewId), deadline: dReview });
+
+        if (!isCreatingNewRoute && currentRouteDocId) {
+            await createRoute(
+                currentRouteDocId, stages, isPaperFlow, paperApproverId, paperSignerId,
+                approvalStage.code, signStage.code, approveAction.code, signAction.code
+            );
+            closeRouteModal();
+            alert('Маршрут отправлен!');
+            openDocumentView(currentRouteDocId);
+        } else {
+            const doc = await createDocument();
+            await uploadFiles(doc.documentId);
+            await createRoute(
+                doc.documentId, stages, isPaperFlow, paperApproverId, paperSignerId,
+                approvalStage.code, signStage.code, approveAction.code, signAction.code
+            );
+            closeRouteModal();
+            alert('Документ создан и отправлен по маршруту.');
+            window.location.href = '/main';
+        }
+    } catch (e) {
+        if(modalError) {
+            modalError.textContent = e.message;
+            modalError.style.display = 'block';
+        } else {
+            alert(e.message);
+        }
+    }
+}
+
+async function createDocument() {
+    const title          = document.getElementById('title') ? document.getElementById('title').value.trim() : null;
+    const categoryId     = document.getElementById('categoryId').value;
+    const typeId         = document.getElementById('typeId').value;
+    const nomenclatureId = document.getElementById('nomenclatureId').value;
+
+    if (!title && document.getElementById('title')) throw new Error('Введите название документа');
+    if (!categoryId)     throw new Error('Выберите категорию');
+    if (!typeId)         throw new Error('Выберите тип');
+    if (!nomenclatureId) throw new Error('Выберите номенклатуру дел');
+
+    const payload = {
+        title: title || '',
+        content: document.getElementById('content') ? document.getElementById('content').value : '',
+        categoryId: parseInt(categoryId),
+        typeId: parseInt(typeId),
+        nomenclatureId: parseInt(nomenclatureId)
+    };
+
+    const resp = await fetch('/api/documents', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    if (!resp.ok) {
+        let errMsg = 'Ошибка создания документа';
+        try { const err = await resp.json(); if (err.error) errMsg = err.error; } catch (_) {}
+        throw new Error(errMsg);
+    }
+    return await resp.json();
+}
+
+async function uploadFiles(docId) {
+    const fileInput = document.getElementById('fileInput');
+    const files = fileInput ? Array.from(fileInput.files) : [];
+    for (const file of files) {
+        const fd = new FormData();
+        fd.append('file', file);
+        const resp = await fetch(`/api/documents/${docId}/files`, {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token },
+            body: fd
+        });
+        if (!resp.ok) {
+            let errMsg = 'Ошибка загрузки файла: ' + file.name;
+            try { const err = await resp.json(); if (err.error) errMsg = err.error; } catch (_) {}
+            throw new Error(errMsg);
+        }
+    }
+}
+
+async function createRoute(docId, stages, isPaperFlow, paperApproverId, paperSignerId, paperApproveStageCode, paperSignStageCode, paperApproveActionCode, paperSignActionCode) {
+    const payload = {
+        stages: stages,
+        isPaperFlow: isPaperFlow,
+        paperApproverId: paperApproverId,
+        paperSignerId: paperSignerId,
+        paperApproveStageCode: paperApproveStageCode,
+        paperSignStageCode: paperSignStageCode,
+        paperApproveActionCode: paperApproveActionCode,
+        paperSignActionCode: paperSignActionCode
+    };
+
+    const resp = await fetch(`/api/documents/${docId}/route`, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    if (!resp.ok) {
+        let errMsg = 'Ошибка создания маршрута';
+        try { const err = await resp.json(); if (err.error) errMsg = err.error; } catch (_) {}
+        throw new Error(errMsg);
+    }
+}
 
 async function loadTasks(taskCode) {
     var task = TASKS.find(function (t) { return t.code === taskCode; });
@@ -48,7 +353,6 @@ async function loadTasks(taskCode) {
 async function loadDocuments(categoryCode) {
     document.getElementById('tableContainer').innerHTML = '<div style="padding:32px;text-align:center;">Загрузка...</div>';
     try {
-        // бэкенд: /api/documents/my?type=... → findMyDocsByCategoryCode
         var resp = await fetch('/api/documents/my?type=' + encodeURIComponent(categoryCode),
             { headers: { 'Authorization': 'Bearer ' + token } });
         if (!resp.ok) {
@@ -81,12 +385,11 @@ async function openDocumentView(id) {
     document.getElementById('btnEditDoc').style.display = 'none';
     document.getElementById('btnSaveDoc').style.display = 'none';
     document.getElementById('btnAddFileVersion').style.display = 'none';
+    document.getElementById('btnCreateRoute').style.display = 'none';
+
     document.getElementById('mv_title').disabled = true;
     document.getElementById('mv_content').disabled = true;
 
-    // Автоматически отмечаем прочтение задачи текущего исполнителя.
-    // Если у пользователя есть задача в статусе «Не прочитано» (PENDING)
-    // и предыдущие этапы завершены — она переходит в «В процессе» (IN_PROGRESS).
     try {
         await fetch('/api/documents/' + id + '/mark-read', {
             method: 'POST',
@@ -108,7 +411,6 @@ async function openDocumentView(id) {
 
         var doc = data.document;
         currentDocData = doc;
-        // код категории — для определения ветки REVIEW → EXECUTE и т.п.
         currentDocCategoryCode = doc.category ? doc.category.code : null;
         var files = data.files || [];
 
@@ -132,6 +434,9 @@ async function openDocumentView(id) {
         if (data.canEdit) {
             document.getElementById('btnEditDoc').style.display = 'inline-block';
             document.getElementById('btnAddFileVersion').style.display = 'inline-block';
+            if (doc.status === 'DRAFT' || doc.status === 'REVISION') {
+                document.getElementById('btnCreateRoute').style.display = 'inline-block';
+            }
         }
 
         var filesContainer = document.getElementById('mv_files');
@@ -188,16 +493,15 @@ async function openDocumentView(id) {
 
                     var taskActionsHtml = '';
                     if (isMyActiveTask) {
-                        // Для REVIEW распорядительного документа — "Рассмотреть" с выбором исполнителя
                         var mainBtnLabel = r.action.name;
-                        if (r.action.code === 'REVIEW' && currentDocCategoryCode === 'ADMINISTRATIVE') {
-                            mainBtnLabel = 'Рассмотреть (назначить исполнителя)';
+                        if (r.action.code === 'REVIEW') {
+                            mainBtnLabel = 'Рассмотреть (назначить исполнителей)';
                         }
                         taskActionsHtml =
                             '<div class="task-actions">' +
                                 '<button class="button button--primary" onclick="openActionModal(' + r.routeId + ', \'' + r.action.code + '\', \'' + mainBtnLabel + '\')">' + mainBtnLabel + '</button>' +
                                 '<button class="button button--secondary" style="color: #b00020; border-color: #b00020;" onclick="openActionModal(' + r.routeId + ', \'REJECT\', \'Отклонить\')">Отклонить</button>' +
-                                '<button class="button button--secondary" onclick="openActionModal(' + r.routeId + ', \'REDIRECT\', \'Перенаправить\')">Перенаправить</button>' +
+                                '<button class="button button--secondary" onclick="openActionModal(' + r.routeId + ', \'REDIRECT\', \'Перенаправить\', \'' + r.action.code + '\')">Перенаправить</button>' +
                             '</div>';
                     }
 
@@ -269,9 +573,6 @@ function renderHistoryTable(history) {
     }).join('');
 }
 
-// ============================================================
-// СКАЧИВАНИЕ ФАЙЛА
-// ============================================================
 async function downloadWithToken(event, linkEl) {
     event.preventDefault();
     var url = linkEl.getAttribute('href');
@@ -315,6 +616,7 @@ function enableEditMode() {
     document.getElementById('mv_content').disabled = false;
     document.getElementById('btnEditDoc').style.display = 'none';
     document.getElementById('btnRegisterDoc').style.display = 'none';
+    document.getElementById('btnCreateRoute').style.display = 'none';
     document.getElementById('btnSaveDoc').style.display = 'inline-block';
     document.getElementById('btnAddFileVersion').style.display = 'inline-block';
     switchDocTab('doc');
@@ -338,9 +640,6 @@ async function saveDocChanges() {
     } catch (e) { alert(e.message); }
 }
 
-// ============================================================
-// ДОБАВЛЕНИЕ НОВОЙ ВЕРСИИ ФАЙЛА
-// ============================================================
 function addFileVersion() {
     var input = document.createElement('input');
     input.type = 'file';
@@ -426,10 +725,9 @@ async function submitRegistration() {
 function registerDocument() { openRegisterModal(); }
 
 // ============================================================
-// ДЕЙСТВИЯ С ЗАДАЧЕЙ (включая REVIEW → EXECUTE)
-// В новой схеме "ADMINISTRATIVE" — это код КАТЕГОРИИ (родителя).
+// ДЕЙСТВИЯ С ЗАДАЧЕЙ (REVIEW и REDIRECT)
 // ============================================================
-async function openActionModal(routeId, actionCode, actionName) {
+async function openActionModal(routeId, actionCode, actionName, originalActionCode) {
     if (actionCode === 'REGISTER') { openRegisterModal(); return; }
 
     currentRouteId = routeId;
@@ -442,19 +740,17 @@ async function openActionModal(routeId, actionCode, actionName) {
     var userSelect = document.getElementById('actionNewAssignee');
     var deadlineGroup = document.getElementById('actionDeadlineGroup');
     var deadlineInput = document.getElementById('actionDeadline');
-    deadlineGroup.style.display = 'none';
 
-    // REVIEW для распорядительной КАТЕГОРИИ → нужен исполнитель + срок
-    var needAssignee = (actionCode === 'REDIRECT')
-        || (actionCode === 'REVIEW' && currentDocCategoryCode === 'ADMINISTRATIVE');
+    if(deadlineGroup) deadlineGroup.style.display = 'none';
+
+    var needAssignee = (actionCode === 'REDIRECT') || (actionCode === 'REVIEW');
 
     if (needAssignee) {
         userGroup.style.display = 'flex';
         userSelect.innerHTML = '<option value="">Загрузка...</option>';
 
-        var permAction = (actionCode === 'REDIRECT')
-            ? (currentDocData && currentDocData.currentRouteAction || 'APPROVE')
-            : 'EXECUTE';
+        var permAction = (actionCode === 'REDIRECT') ? (originalActionCode || 'APPROVE') :
+                         (currentDocCategoryCode === 'ADMINISTRATIVE' ? 'EXECUTE' : 'READ');
 
         try {
             var resp = await fetch('/api/documents/eligible-users', {
@@ -462,34 +758,50 @@ async function openActionModal(routeId, actionCode, actionName) {
                 headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     actionCode: permAction,
-                    documentTypeId: currentDocData.documentType ? currentDocData.documentType.documentTypeId : null,
-                    categoryId: currentDocData.category ? currentDocData.category.categoryId : null,
-                    departmentId: currentDocData.department ? currentDocData.department.departmentId : null,
-                    sectorId: currentDocData.sector ? currentDocData.sector.sectorId : null
+                    documentId: currentDocId
                 })
             });
             var users = await resp.json();
 
-            if (actionCode === 'REDIRECT') {
-                users = users.filter(function (u) { return u.userId !== currentUserId; });
-            }
-
-            if (!users.length) {
+            if (users.error) {
+                userSelect.innerHTML = '<option value="">Ошибка: ' + users.error + '</option>';
+            } else if (!users.length) {
                 userSelect.innerHTML = '<option value="">Нет подходящих сотрудников</option>';
             } else {
-                userSelect.innerHTML = '<option value="">Выберите сотрудника</option>' +
-                    users.map(function (u) {
+                if (actionCode === 'REVIEW') {
+                    userSelect.setAttribute('multiple', 'true');
+                    userSelect.style.height = '120px';
+                    // Убрали вывод табельного номера
+                    userSelect.innerHTML = users.map(function (u) {
                         return '<option value="' + u.userId + '">' +
                             escapeHtml(u.lastName) + ' ' + escapeHtml(u.firstName) + ' ' +
-                            escapeHtml(u.middleName || '') + ' (' + escapeHtml(u.tabNumber) + ')' +
+                            escapeHtml(u.middleName || '') +
                             '</option>';
                     }).join('');
+                } else {
+                    userSelect.removeAttribute('multiple');
+                    userSelect.style.height = '';
+                    var filteredUsers = users.filter(u => u.userId !== currentUserId);
+
+                    if (filteredUsers.length === 0) {
+                        userSelect.innerHTML = '<option value="">Нет других подходящих сотрудников</option>';
+                    } else {
+                        // Убрали вывод табельного номера
+                        userSelect.innerHTML = '<option value="">Выберите сотрудника</option>' +
+                            filteredUsers.map(function (u) {
+                                return '<option value="' + u.userId + '">' +
+                                    escapeHtml(u.lastName) + ' ' + escapeHtml(u.firstName) + ' ' +
+                                    escapeHtml(u.middleName || '') +
+                                    '</option>';
+                            }).join('');
+                    }
+                }
             }
         } catch (_) {
             userSelect.innerHTML = '<option value="">Ошибка загрузки</option>';
         }
 
-        if (actionCode === 'REVIEW' && currentDocCategoryCode === 'ADMINISTRATIVE') {
+        if (actionCode === 'REVIEW' && deadlineGroup) {
             deadlineGroup.style.display = 'flex';
             var d = new Date();
             d.setDate(d.getDate() + 7);
@@ -497,6 +809,8 @@ async function openActionModal(routeId, actionCode, actionName) {
         }
     } else {
         userGroup.style.display = 'none';
+        userSelect.removeAttribute('multiple');
+        userSelect.style.height = '';
     }
 
     document.getElementById('actionModal').classList.add('open');
@@ -510,8 +824,8 @@ function closeActionModal() {
 
 async function submitTaskAction() {
     var comment = document.getElementById('actionComment').value.trim();
-    var newAssigneeId = document.getElementById('actionNewAssignee').value;
-    var deadline = document.getElementById('actionDeadline').value;
+    var userSelect = document.getElementById('actionNewAssignee');
+    var deadline = document.getElementById('actionDeadline') ? document.getElementById('actionDeadline').value : null;
 
     if (currentActionCode === 'REJECT' && !comment) {
         alert('При отклонении задачи необходимо указать причину (комментарий).');
@@ -524,13 +838,19 @@ async function submitTaskAction() {
         comment: comment
     };
 
-    var needAssignee = (currentActionCode === 'REDIRECT')
-        || (currentActionCode === 'REVIEW' && currentDocCategoryCode === 'ADMINISTRATIVE');
-    if (needAssignee) {
+    if (currentActionCode === 'REDIRECT') {
+        var newAssigneeId = userSelect.value;
         if (!newAssigneeId) { alert('Выберите сотрудника.'); return; }
         payload.newAssigneeId = newAssigneeId;
     }
-    if (currentActionCode === 'REVIEW' && currentDocCategoryCode === 'ADMINISTRATIVE') {
+    else if (currentActionCode === 'REVIEW') {
+        var selectedOptions = Array.from(userSelect.selectedOptions).map(opt => opt.value).filter(v => v);
+        if (selectedOptions.length === 0) {
+            alert('Выберите хотя бы одного исполнителя.');
+            return;
+        }
+        payload.executorIds = selectedOptions;
+
         if (!deadline) { alert('Укажите срок исполнения.'); return; }
         payload.deadline = deadline + ':00';
     }
@@ -552,9 +872,6 @@ async function submitTaskAction() {
     }
 }
 
-// ============================================================
-// ПЕЧАТЬ
-// ============================================================
 function printSection(elementId, title) {
     var el = document.getElementById(elementId);
     if (!el) { alert('Нечего печатать'); return; }

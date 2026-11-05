@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <title>Создание документа</title>
+    <!-- Подключаем оба файла стилей: styles.css для базы и main.css для модалок и таблиц -->
     <link rel="stylesheet" th:href="@{/css/styles.css}">
+    <link rel="stylesheet" th:href="@{/css/main.css}">
     <style>
         .topbar { border-bottom: none; background: var(--bg-milk);
             box-shadow: 0 6px 24px rgba(217, 17, 105, 0.07); padding: 0 32px; height: 80px; }
@@ -41,22 +43,6 @@
         .error-banner { background: #ffe4e6; color: #be123c; border: 1px solid #fda4af;
             padding: 12px 16px; border-radius: 8px; margin-bottom: 16px;
             font-weight: 600; font-size: 14px; display: none; }
-        .modal-overlay { position: fixed; inset: 0; background: rgba(92, 19, 59, 0.4);
-            backdrop-filter: blur(4px); display: none; align-items: center;
-            justify-content: center; z-index: 200; }
-        .modal-overlay.open { display: flex; }
-        .modal-content { background: var(--bg-milk); border-radius: 24px; width: 100%;
-            max-width: 620px; max-height: 90vh; overflow-y: auto; padding: 32px;
-            border: 1px solid var(--border-pink); box-shadow: 0 20px 40px rgba(92, 19, 59, 0.15);
-            position: relative; }
-        .modal-content h2 { margin: 0 0 8px 0; font-size: 20px; color: var(--text-dark); }
-        .modal-close { position: absolute; top: 20px; right: 20px;
-            background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text-muted); }
-        .modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
-        .stage-block { padding: 16px; background: var(--bg-pink-light);
-            border: 1px solid var(--border-pink); border-radius: 12px; margin-bottom: 16px; }
-        .stage-block h4 { margin: 0 0 12px 0; font-size: 14px; font-weight: 700;
-            color: var(--magenta); text-transform: uppercase; letter-spacing: 0.5px; }
     </style>
 </head>
 <body>
@@ -69,7 +55,7 @@
     </div>
     <div class="topbar-right">
         <button class="button button--secondary" onclick="saveDraft()">Сохранить как черновик</button>
-        <button class="button button--primary" onclick="openRouteModal()">Сохранить и отправить</button>
+        <button class="button button--primary" onclick="openRouteModalForNew()">Сохранить и отправить</button>
     </div>
 </header>
 
@@ -81,15 +67,14 @@
             <div class="section-card">
                 <h3>Основная информация</h3>
                 <div class="form-group">
-                    <label>Название документа *</label>
-                    <input type="text" id="title" placeholder="Введите название">
+                    <label>Название документа (формируется автоматически)</label>
+                    <input type="text" id="title" readonly placeholder="Заполнится после выбора категории и типа..." style="background: #f8f8f8;">
                 </div>
                 <div class="form-group">
                     <label>Содержание</label>
                     <textarea id="content" rows="6" placeholder="Краткое содержание или текст документа..."></textarea>
                 </div>
 
-                <!-- 1. КАТЕГОРИЯ (родитель) -->
                 <div class="form-group">
                     <label>Категория *</label>
                     <select id="categoryId" onchange="onCategoryChange()">
@@ -97,7 +82,6 @@
                     </select>
                 </div>
 
-                <!-- 2. ТИП (дочерний, фильтруется по категории) -->
                 <div class="form-group">
                     <label>Тип документа *</label>
                     <select id="typeId" disabled onchange="onTypeChange()">
@@ -105,7 +89,6 @@
                     </select>
                 </div>
 
-                <!-- 3. ДЕЛО (номенклатура) -->
                 <div class="form-group">
                     <label>Номенклатура дел *</label>
                     <select id="nomenclatureId" disabled>
@@ -129,157 +112,19 @@
     </div>
 </main>
 
-<!-- МОДАЛЬНОЕ ОКНО: МАРШРУТ -->
-<div class="modal-overlay" id="routeModal">
-    <div class="modal-content">
-        <button class="modal-close" onclick="closeRouteModal()">×</button>
-        <h2>Маршрут документа</h2>
-        <p class="muted" style="margin-bottom: 24px;">
-            Все этапы обязательны. Для каждого этапа укажите исполнителя и срок.
-            Регистрацию выполняет сотрудник ДОУ, назначенный на этап.
-        </p>
+<!-- Подключаем модальные окна из фрагментов -->
+<div th:replace="~{fragments/modals :: modals}"></div>
 
-        <div class="error-banner" id="modalError" style="margin-bottom: 16px;"></div>
-
-        <div class="stage-block">
-            <h4>1. Согласование</h4>
-            <div class="form-group">
-                <label>Исполнитель *</label>
-                <select id="assigneeApproval"></select>
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-                <label>Срок *</label>
-                <input type="datetime-local" id="deadlineApproval">
-            </div>
-        </div>
-
-        <div class="stage-block">
-            <h4>2. Подписание</h4>
-            <div class="form-group">
-                <label>Исполнитель *</label>
-                <select id="assigneeSign"></select>
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-                <label>Срок *</label>
-                <input type="datetime-local" id="deadlineSign">
-            </div>
-        </div>
-
-        <div class="stage-block">
-            <h4>3. Регистрация (сотрудник ДОУ)</h4>
-            <div class="form-group">
-                <label>Исполнитель *</label>
-                <select id="assigneeRegister"></select>
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-                <label>Срок *</label>
-                <input type="datetime-local" id="deadlineRegister">
-            </div>
-        </div>
-
-        <div class="stage-block">
-            <h4>4. Рассмотрение</h4>
-            <div class="form-group">
-                <label>Исполнитель *</label>
-                <select id="assigneeReview"></select>
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-                <label>Срок *</label>
-                <input type="datetime-local" id="deadlineReview">
-            </div>
-        </div>
-
-        <div class="stage-block" id="blockExecute" style="display:none;">
-            <h4>5. Исполнение (распорядительный документ)</h4>
-            <div class="form-group">
-                <label>Исполнитель *</label>
-                <select id="assigneeExecute"></select>
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-                <label>Срок *</label>
-                <input type="datetime-local" id="deadlineExecute">
-            </div>
-        </div>
-
-        <div class="stage-block" id="blockRead" style="display:none;">
-            <h4>5. Ознакомление (организационный документ)</h4>
-            <div class="form-group">
-                <label>Исполнитель *</label>
-                <select id="assigneeRead"></select>
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-                <label>Срок *</label>
-                <input type="datetime-local" id="deadlineRead">
-            </div>
-        </div>
-
-        <div class="modal-actions">
-            <button class="button button--secondary" onclick="closeRouteModal()">Отмена</button>
-            <button class="button button--primary" onclick="submitRoute()">Отправить</button>
-        </div>
-    </div>
-</div>
+<!-- Скрипты -->
+<script th:src="@{/js/core.js}"></script>
+<script th:src="@{/js/documents.js}"></script>
 
 <script>
-    const token = localStorage.getItem('token');
-    if (!token) window.location.href = '/login';
-
-    let allCategories    = [];   // doc_categories (родитель)
-    let allDocTypes      = [];   // doc_types (дочерние)
-    let allNomenclatures = [];   // nomenclatures_cases (дела)
-    let allUsers         = [];
-    let allRouteStages   = [];
-    let allActions       = [];
-
-    let approvalStage, signStage, registerStage, reviewStage, executeStage, readStage;
-    let approveAction, signAction, registerAction, reviewAction, executeAction, readAction;
-
-    let selectedFiles = [];
-
-    async function loadReferences() {
-        try {
-            const headers = { 'Authorization': 'Bearer ' + token };
-            const [cats, types, noms, users, stages, actions] = await Promise.all([
-                fetch('/api/ref/doc-categories', { headers }).then(r => r.json()),
-                fetch('/api/ref/doc-types',      { headers }).then(r => r.json()),
-                fetch('/api/ref/nomenclatures',  { headers }).then(r => r.json()),
-                fetch('/api/ref/users',          { headers }).then(r => r.json()),
-                fetch('/api/ref/route-stages',   { headers }).then(r => r.json()),
-                fetch('/api/ref/doc-actions',    { headers }).then(r => r.json())
-            ]);
-
-            allCategories    = (cats  || []).filter(c => c.isActive !== false);
-            allDocTypes      = (types || []).filter(t => t.isActive !== false);
-            allNomenclatures = (noms  || []).filter(n => n.isActive !== false);
-            allUsers         = (users || []).filter(u => u.isActive !== false);
-            allRouteStages   = stages || [];
-            allActions       = actions || [];
-
-            approvalStage = findStage(['APPROVAL', 'APPROVE'],              ['согласован']);
-            signStage     = findStage(['SIGNING', 'SIGN'],                  ['подписан']);
-            registerStage = findStage(['REGISTRATION', 'REGISTER'],         ['регистрац']);
-            reviewStage   = findStage(['REVIEW', 'CONSIDERATION'],          ['рассмотрен']);
-            executeStage  = findStage(['EXECUTE', 'EXECUTION'],             ['исполнен']);
-            readStage     = findStage(['READ', 'AWARENESS'],                ['ознакомлен']);
-
-            approveAction  = allActions.find(a => a.code === 'APPROVE');
-            signAction     = allActions.find(a => a.code === 'SIGN');
-            registerAction = allActions.find(a => a.code === 'REGISTER');
-            reviewAction   = allActions.find(a => a.code === 'REVIEW');
-            executeAction  = allActions.find(a => a.code === 'EXECUTE');
-            readAction     = allActions.find(a => a.code === 'READ');
-
-            populateCategories();
-        } catch (e) {
-            showError('Ошибка загрузки справочников: ' + e.message);
-        }
-    }
-
-    function findStage(codes, nameParts) {
-        let s = allRouteStages.find(x => codes.includes(x.code));
-        if (!s) s = allRouteStages.find(x => nameParts.some(n => (x.name || '').toLowerCase().includes(n)));
-        return s;
-    }
+    // Дополнительная инициализация для страницы создания
+    document.addEventListener('DOMContentLoaded', async function() {
+        const loaded = await loadRouteReferences();
+        if (loaded) populateCategories();
+    });
 
     function populateCategories() {
         const sel = document.getElementById('categoryId');
@@ -291,7 +136,6 @@
             allCategories.map(c => `<option value="${c.categoryId}">${escapeHtml(c.name)}</option>`).join('');
     }
 
-    // при смене КАТЕГОРИИ — загружаем ТИПЫ этой категории
     function onCategoryChange() {
         const catId = parseInt(document.getElementById('categoryId').value);
         const typeSelect = document.getElementById('typeId');
@@ -304,8 +148,7 @@
 
         if (!catId) return;
 
-        const filtered = allDocTypes.filter(t =>
-            t.category && t.category.categoryId === catId);
+        const filtered = allDocTypes.filter(t => t.category && t.category.categoryId === catId);
 
         if (!filtered.length) {
             typeSelect.innerHTML = '<option value="">Нет типов для этой категории</option>';
@@ -314,9 +157,9 @@
         typeSelect.innerHTML = '<option value="">Выберите тип</option>' +
             filtered.map(t => `<option value="${t.documentTypeId}">${escapeHtml(t.name)}</option>`).join('');
         typeSelect.disabled = false;
+        updateTitlePreview();
     }
 
-    // при смене ТИПА — загружаем ДЕЛА по категории+типу
     function onTypeChange() {
         const typeId = parseInt(document.getElementById('typeId').value);
         const catId  = parseInt(document.getElementById('categoryId').value);
@@ -340,25 +183,35 @@
         nomSelect.innerHTML = '<option value="">Выберите номенклатуру</option>' +
             filtered.map(n => `<option value="${n.nomenclatureId}">${escapeHtml(n.caseCode)} — ${escapeHtml(n.title)}</option>`).join('');
         nomSelect.disabled = false;
+        updateTitlePreview();
     }
 
-    // код КАТЕГОРИИ (родителя) — используется для определения обязательных этапов
-    function getSelectedCategoryCode() {
+    function updateTitlePreview() {
         const catId = parseInt(document.getElementById('categoryId').value);
-        if (!catId) return null;
-        const c = allCategories.find(x => x.categoryId === catId);
-        return c ? c.code : null;
+        const typeId = parseInt(document.getElementById('typeId').value);
+        const titleInput = document.getElementById('title');
+        const currentUser = allUsers.find(u => u.userId === currentUserId);
+
+        if (!catId || !typeId || !currentUser) {
+            titleInput.value = '';
+            return;
+        }
+
+        const cat = allCategories.find(c => c.categoryId === catId);
+        const type = allDocTypes.find(t => t.documentTypeId === typeId);
+
+        if (cat && type) {
+            const initial = currentUser.firstName ? currentUser.firstName.charAt(0) + '.' : '';
+            const middle = currentUser.middleName ? ' ' + currentUser.middleName.charAt(0) + '.' : '';
+            titleInput.value = `${cat.name} ${type.name} от ${currentUser.lastName} ${initial}${middle}`.trim();
+        }
     }
 
+    let selectedFiles = [];
     function onFilesSelected(event) {
         const files = Array.from(event.target.files || []);
         files.forEach(f => {
-            selectedFiles.push({
-                file: f,
-                fileName: f.name,
-                fileSize: f.size,
-                mimeType: f.type || 'application/octet-stream'
-            });
+            selectedFiles.push({ file: f, fileName: f.name, fileSize: f.size });
         });
         renderFiles();
         event.target.value = '';
@@ -372,7 +225,7 @@
         }
         container.innerHTML = selectedFiles.map((f, i) => `
             <div class="file-row">
-                <span>📄 ${escapeHtml(f.fileName)} <span class="muted">(${formatSize(f.fileSize)})</span></span>
+                <span>📄 ${escapeHtml(f.fileName)}</span>
                 <button class="action-link" style="color:#b00020;" onclick="removeFile(${i})">Удалить</button>
             </div>
         `).join('');
@@ -380,209 +233,12 @@
 
     function removeFile(idx) { selectedFiles.splice(idx, 1); renderFiles(); }
 
-    function formatSize(b) {
-        if (b < 1024) return b + ' Б';
-        if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' КБ';
-        return (b / 1024 / 1024).toFixed(1) + ' МБ';
-    }
-
-    function escapeHtml(s) {
-        return String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({
-            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-        }[ch]));
-    }
-
     function showError(msg) {
         const b = document.getElementById('errorBanner');
         b.textContent = msg; b.style.display = 'block';
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
     function clearError() { document.getElementById('errorBanner').style.display = 'none'; }
-
-    function showModalError(msg) {
-        const b = document.getElementById('modalError');
-        b.textContent = msg; b.style.display = 'block';
-    }
-    function clearModalError() { document.getElementById('modalError').style.display = 'none'; }
-
-    function openRouteModal() {
-        clearError();
-        clearModalError();
-
-        const title = document.getElementById('title').value.trim();
-        if (!title) { showError('Введите название документа'); return; }
-        if (!document.getElementById('categoryId').value) { showError('Выберите категорию'); return; }
-        if (!document.getElementById('typeId').value)     { showError('Выберите тип документа'); return; }
-        if (!document.getElementById('nomenclatureId').value) { showError('Выберите номенклатуру дел'); return; }
-
-        if (!allUsers.length) { showError('Справочник пользователей не загружен'); return; }
-        if (!approvalStage || !signStage || !registerStage || !reviewStage
-            || !approveAction || !signAction || !registerAction || !reviewAction) {
-            showError('В справочнике отсутствуют обязательные этапы (APPROVE / SIGN / REGISTER / REVIEW).');
-            return;
-        }
-
-        const options = allUsers.map(u =>
-            `<option value="${u.userId}">${escapeHtml(u.lastName)} ${escapeHtml(u.firstName)} ${escapeHtml(u.middleName || '')} (${escapeHtml(u.tabNumber)})</option>`
-        ).join('');
-
-        ['assigneeApproval', 'assigneeSign', 'assigneeRegister', 'assigneeReview', 'assigneeExecute', 'assigneeRead'].forEach(id => {
-            const el = document.getElementById(id);
-            if (!el) return;
-            el.innerHTML = '<option value="">Выберите</option>' + options;
-            el.value = '';
-        });
-
-        ['deadlineApproval', 'deadlineSign', 'deadlineRegister', 'deadlineReview', 'deadlineExecute', 'deadlineRead'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.value = '';
-        });
-
-        // определяем ветку по КОДУ КАТЕГОРИИ
-        const categoryCode = getSelectedCategoryCode();
-        document.getElementById('blockExecute').style.display = (categoryCode === 'ADMINISTRATIVE') ? 'block' : 'none';
-        document.getElementById('blockRead').style.display    = (categoryCode === 'ORGANIZATIONAL') ? 'block' : 'none';
-
-        document.getElementById('routeModal').classList.add('open');
-    }
-
-    function closeRouteModal() {
-        document.getElementById('routeModal').classList.remove('open');
-    }
-
-    function readDeadline(inputId) {
-        const v = document.getElementById(inputId).value;
-        return v ? v : null;
-    }
-
-    function validateDeadline(value, label) {
-        if (!value) throw new Error('Укажите срок для этапа «' + label + '»');
-        const d = new Date(value);
-        if (isNaN(d.getTime())) throw new Error('Неверный формат срока для этапа «' + label + '»');
-        if (d.getTime() < Date.now()) throw new Error('Срок для этапа «' + label + '» не может быть в прошлом');
-    }
-
-    async function submitRoute() {
-        clearModalError();
-        try {
-            const approvalId = document.getElementById('assigneeApproval').value;
-            const signId     = document.getElementById('assigneeSign').value;
-            const registerId = document.getElementById('assigneeRegister').value;
-            const reviewId   = document.getElementById('assigneeReview').value;
-
-            if (!approvalId) throw new Error('Выберите исполнителя для согласования');
-            if (!signId)     throw new Error('Выберите исполнителя для подписания');
-            if (!registerId) throw new Error('Выберите исполнителя для регистрации');
-            if (!reviewId)   throw new Error('Выберите исполнителя для рассмотрения');
-
-            const deadlineApproval = readDeadline('deadlineApproval');
-            const deadlineSign     = readDeadline('deadlineSign');
-            const deadlineRegister = readDeadline('deadlineRegister');
-            const deadlineReview   = readDeadline('deadlineReview');
-
-            validateDeadline(deadlineApproval, 'Согласование');
-            validateDeadline(deadlineSign,     'Подписание');
-            validateDeadline(deadlineRegister, 'Регистрация');
-            validateDeadline(deadlineReview,   'Рассмотрение');
-
-            const stages = [
-                { stageCode: approvalStage.code, actionCode: approveAction.code,  assigneeId: parseInt(approvalId), deadline: deadlineApproval },
-                { stageCode: signStage.code,     actionCode: signAction.code,     assigneeId: parseInt(signId),     deadline: deadlineSign },
-                { stageCode: registerStage.code, actionCode: registerAction.code, assigneeId: parseInt(registerId), deadline: deadlineRegister },
-                { stageCode: reviewStage.code,   actionCode: reviewAction.code,   assigneeId: parseInt(reviewId),   deadline: deadlineReview }
-            ];
-
-            const categoryCode = getSelectedCategoryCode();
-
-            if (categoryCode === 'ADMINISTRATIVE') {
-                const executeId = document.getElementById('assigneeExecute').value;
-                const deadlineExecute = readDeadline('deadlineExecute');
-                if (!executeId) throw new Error('Выберите исполнителя для исполнения');
-                validateDeadline(deadlineExecute, 'Исполнение');
-                if (!executeStage || !executeAction) throw new Error('В справочнике нет этапа EXECUTE');
-                stages.push({ stageCode: executeStage.code, actionCode: executeAction.code, assigneeId: parseInt(executeId), deadline: deadlineExecute });
-            } else if (categoryCode === 'ORGANIZATIONAL') {
-                const readId = document.getElementById('assigneeRead').value;
-                const deadlineRead = readDeadline('deadlineRead');
-                if (!readId) throw new Error('Выберите сотрудника для ознакомления');
-                validateDeadline(deadlineRead, 'Ознакомление');
-                if (!readStage || !readAction) throw new Error('В справочнике нет этапа READ');
-                stages.push({ stageCode: readStage.code, actionCode: readAction.code, assigneeId: parseInt(readId), deadline: deadlineRead });
-            }
-
-            const doc = await createDocument();
-            await uploadFiles(doc.documentId);
-            await createRoute(doc.documentId, stages);
-
-            closeRouteModal();
-            alert('Документ создан и отправлен по маршруту.');
-            window.location.href = '/main';
-        } catch (e) {
-            showModalError(e.message);
-        }
-    }
-
-    async function createDocument() {
-        const title          = document.getElementById('title').value.trim();
-        const categoryId     = document.getElementById('categoryId').value;
-        const typeId         = document.getElementById('typeId').value;
-        const nomenclatureId = document.getElementById('nomenclatureId').value;
-
-        if (!title)          throw new Error('Введите название документа');
-        if (!categoryId)     throw new Error('Выберите категорию');
-        if (!typeId)         throw new Error('Выберите тип');
-        if (!nomenclatureId) throw new Error('Выберите номенклатуру дел');
-
-        const payload = {
-            title,
-            content: document.getElementById('content').value || '',
-            categoryId: parseInt(categoryId),
-            typeId: parseInt(typeId),
-            nomenclatureId: parseInt(nomenclatureId)
-        };
-
-        const resp = await fetch('/api/documents', {
-            method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        if (!resp.ok) {
-            let errMsg = 'Ошибка создания документа';
-            try { const err = await resp.json(); if (err.error) errMsg = err.error; } catch (_) {}
-            throw new Error(errMsg);
-        }
-        return await resp.json();
-    }
-
-    async function uploadFiles(docId) {
-        for (const f of selectedFiles) {
-            const fd = new FormData();
-            fd.append('file', f.file);
-            const resp = await fetch(`/api/documents/${docId}/files`, {
-                method: 'POST',
-                headers: { 'Authorization': 'Bearer ' + token },
-                body: fd
-            });
-            if (!resp.ok) {
-                let errMsg = 'Ошибка загрузки файла: ' + f.fileName;
-                try { const err = await resp.json(); if (err.error) errMsg = err.error; } catch (_) {}
-                throw new Error(errMsg);
-            }
-        }
-    }
-
-    async function createRoute(docId, stages) {
-        const resp = await fetch(`/api/documents/${docId}/route`, {
-            method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ stages })
-        });
-        if (!resp.ok) {
-            let errMsg = 'Ошибка создания маршрута';
-            try { const err = await resp.json(); if (err.error) errMsg = err.error; } catch (_) {}
-            throw new Error(errMsg);
-        }
-    }
 
     async function saveDraft() {
         clearError();
@@ -597,8 +253,6 @@
     }
 
     function goBack() { window.location.href = '/main'; }
-
-    loadReferences();
 </script>
 </body>
 </html>

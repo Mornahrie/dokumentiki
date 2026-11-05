@@ -11,6 +11,7 @@
       </div>
     </div>
     <div style="display: flex; gap: 12px;">
+      <button class="button button--primary" id="btnCreateRoute" onclick="openRouteModalForExisting(currentDocId)" style="display: none;">Направить по маршруту</button>
       <button class="button button--secondary" id="btnAddFileVersion" onclick="addFileVersion()" style="display: none;">+ Новая версия файла</button>
       <button class="button button--primary" id="btnRegisterDoc" onclick="registerDocument()" style="display: none;">Зарегистрировать</button>
       <button class="button button--secondary" id="btnEditDoc" onclick="enableEditMode()" style="display: none;">Редактировать</button>
@@ -28,26 +29,64 @@
     <!-- Вкладка 1: Документ -->
     <div id="tab-doc" class="tab-content">
       <div class="two-col-layout">
+
+        <!-- ЛЕВАЯ КОЛОНКА: Основная информация -->
         <div class="col">
           <div class="section-card">
             <h3>Основная информация</h3>
-            <div class="form-group"><label>Название документа</label><input type="text" id="mv_title" disabled></div>
-            <div class="form-group"><label>Содержание</label><textarea id="mv_content" rows="6" disabled></textarea></div>
-            <div class="form-group"><label>Тип документа</label><input type="text" id="mv_type" disabled></div>
-            <div class="form-group"><label>Категория</label><input type="text" id="mv_category" disabled></div>
-            <div class="form-group"><label>Номенклатура дел</label><input type="text" id="mv_nomenclature" disabled></div>
-            <div class="form-group"><label>Рег. номер</label><input type="text" id="mv_reg" disabled></div>
-            <div class="form-group"><label>Статус</label><input type="text" id="mv_status" disabled></div>
-            <div class="form-group"><label>Автор</label><input type="text" id="mv_author" disabled></div>
-            <div class="form-group"><label>Дата создания</label><input type="text" id="mv_created" disabled></div>
+            <div class="form-group">
+              <label>Название документа</label>
+              <input type="text" id="mv_title" disabled>
+            </div>
+            <div class="form-group">
+              <label>Содержание</label>
+              <textarea id="mv_content" rows="8" disabled></textarea>
+            </div>
+            <div class="form-group">
+              <label>Тип документа</label>
+              <input type="text" id="mv_type" disabled>
+            </div>
+            <div class="form-group">
+              <label>Категория</label>
+              <input type="text" id="mv_category" disabled>
+            </div>
+            <div class="form-group">
+              <label>Автор</label>
+              <input type="text" id="mv_author" disabled>
+            </div>
           </div>
         </div>
+
+        <!-- ПРАВАЯ КОЛОНКА: Файлы и реквизиты -->
         <div class="col">
+          <!-- Файлы -->
           <div class="section-card">
             <h3>Файлы</h3>
             <div id="mv_files" class="muted">Файлы отсутствуют</div>
           </div>
+
+          <!-- Служебные реквизиты -->
+          <div class="section-card">
+            <h3>Реквизиты документа</h3>
+            <div class="form-group">
+              <label>Номенклатура дел</label>
+              <input type="text" id="mv_nomenclature" disabled>
+            </div>
+            <div class="form-group">
+              <label>Рег. номер</label>
+              <input type="text" id="mv_reg" disabled>
+            </div>
+            <div class="form-group">
+              <label>Статус</label>
+              <input type="text" id="mv_status" disabled>
+            </div>
+            <div class="form-group">
+              <label>Дата создания</label>
+              <input type="text" id="mv_created" disabled>
+            </div>
+          </div>
         </div>
+
       </div>
     </div>
 
@@ -70,8 +109,9 @@
         <table>
           <thead>
           <tr>
-            <th style="width: 110px;">Дата</th>
-            <th style="width: 80px;">Время</th>
+            <!-- Увеличена ширина колонок, чтобы дата ДД.ММ.ГГГГ помещалась полностью -->
+            <th style="width: 140px;">Дата</th>
+            <th style="width: 100px;">Время</th>
             <th>ФИО</th>
             <th>Действие</th>
             <th>Комментарий</th>

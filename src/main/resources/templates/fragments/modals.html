@@ -3,6 +3,48 @@
 <body>
 <th:block th:fragment="modals">
 
+    <style>
+        .route-columns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            align-items: start;
+        }
+        @media (max-width: 850px) {
+            .route-columns {
+                grid-template-columns: 1fr;
+            }
+        }
+        .route-col {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .stage-block {
+            margin-bottom: 0;
+            padding: 16px;
+            background: var(--bg-pink-light, #fff0f5);
+            border: 1px solid var(--border-pink, #fbcfe8);
+            border-radius: 12px;
+        }
+        .stage-block h4 {
+            margin: 0 0 16px 0;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--magenta, #d91169);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px dashed var(--border-pink, #fbcfe8);
+            padding-bottom: 8px;
+        }
+        .stage-block .form-group {
+            margin-bottom: 12px;
+        }
+        .stage-block .form-group:last-child {
+            margin-bottom: 0;
+        }
+    </style>
+
     <!-- Popover Фильтр -->
     <div id="filterPopover" class="filter-popover" style="display: none;">
         <div class="filter-popover-header" id="filterPopoverTitle">Фильтр</div>
@@ -35,8 +77,13 @@
             <h2 id="actionModalTitle">Действие с задачей</h2>
 
             <div class="form-group" id="actionUserGroup" style="display: none;">
-                <label>Перенаправить на сотрудника:</label>
+                <label>Выберите сотрудника:</label>
                 <select id="actionNewAssignee"></select>
+            </div>
+
+            <div class="form-group" id="actionDeadlineGroup" style="display: none;">
+                <label>Срок исполнения:</label>
+                <input type="datetime-local" id="actionDeadline">
             </div>
 
             <div class="form-group">
@@ -47,6 +94,99 @@
             <div class="modal-actions">
                 <button class="button button--secondary" onclick="closeActionModal()">Отмена</button>
                 <button class="button button--primary" id="btnSubmitAction" onclick="submitTaskAction()">Подтвердить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модалка маршрута -->
+    <div class="custom-modal" id="routeModal">
+        <div class="custom-modal-content" style="max-width: 900px;">
+            <button class="custom-modal-close" onclick="closeRouteModal()">×</button>
+            <h2>Маршрут документа</h2>
+            <p class="muted" style="margin-bottom: 20px;">
+                Для каждого этапа укажите исполнителя и срок.
+            </p>
+
+            <div class="error-banner" id="modalError" style="margin-bottom: 16px; display: none; color: red;"></div>
+
+            <div class="paper-checkbox-wrapper" style="display: flex; align-items: center; gap: 10px; margin-bottom: 24px; padding: 16px; background: #fff0f5; border-radius: 12px; border: 1px solid var(--border-pink);">
+                <input type="checkbox" id="isPaperFlow" onchange="togglePaperFlow()" style="width: 18px; height: 18px; cursor: pointer;">
+                <label for="isPaperFlow" style="margin: 0; cursor: pointer; font-weight: 600; color: var(--text-dark);">Документ уже подписан и согласован на бумаге</label>
+            </div>
+
+            <div class="route-columns">
+                <div class="route-col">
+                    <div id="standardStagesBlock">
+                        <div class="stage-block" style="margin-bottom: 16px;">
+                            <h4>1. Согласование</h4>
+                            <div class="form-group">
+                                <label>Исполнитель *</label>
+                                <select id="assigneeApproval"></select>
+                            </div>
+                            <div class="form-group">
+                                <label>Срок *</label>
+                                <input type="datetime-local" id="deadlineApproval">
+                            </div>
+                        </div>
+
+                        <div class="stage-block">
+                            <h4>2. Подписание</h4>
+                            <div class="form-group">
+                                <label>Исполнитель *</label>
+                                <select id="assigneeSign"></select>
+                            </div>
+                            <div class="form-group">
+                                <label>Срок *</label>
+                                <input type="datetime-local" id="deadlineSign">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="paperHistoricalBlock" style="display: none;">
+                        <div class="stage-block">
+                            <h4>Исторические данные</h4>
+                            <div class="form-group">
+                                <label>Кто согласовал (на бумаге) *</label>
+                                <select id="paperApprover"></select>
+                            </div>
+                            <div class="form-group">
+                                <label>Кто подписал (на бумаге) *</label>
+                                <select id="paperSigner"></select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="route-col">
+                    <div class="stage-block">
+                        <h4><span id="numRegister">3</span>. Регистрация</h4>
+                        <div class="form-group">
+                            <label>Исполнитель *</label>
+                            <select id="assigneeRegister"></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Срок *</label>
+                            <input type="datetime-local" id="deadlineRegister">
+                        </div>
+                    </div>
+
+                    <div class="stage-block">
+                        <h4><span id="numReview">4</span>. Рассмотрение</h4>
+                        <div class="form-group">
+                            <label>Исполнитель *</label>
+                            <select id="assigneeReview"></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Срок *</label>
+                            <input type="datetime-local" id="deadlineReview">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-actions" style="margin-top: 32px; border-top: 1px solid var(--border-pink); padding-top: 20px;">
+                <button class="button button--secondary" onclick="closeRouteModal()">Отмена</button>
+                <button class="button button--primary" onclick="submitRoute()">Отправить</button>
             </div>
         </div>
     </div>
