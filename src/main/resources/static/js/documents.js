@@ -127,6 +127,12 @@ async function openRouteModalForNew() {
     const loaded = await loadRouteReferences();
     if (!loaded) return;
 
+    if (!approvalStage || !signStage || !registerStage || !reviewStage ||
+        !approveAction || !signAction || !registerAction || !reviewAction) {
+        showAlert('Ошибка', 'Справочники этапов или действий не заполнены администратором. Создание маршрута невозможно.');
+        return;
+    }
+
     populateRouteModalSelects();
 
     document.getElementById('paperHistoricalBlock').style.display = 'none';
@@ -145,6 +151,12 @@ async function openRouteModalForExisting(docId) {
 
     const loaded = await loadRouteReferences();
     if (!loaded) return;
+
+    if (!approvalStage || !signStage || !registerStage || !reviewStage ||
+        !approveAction || !signAction || !registerAction || !reviewAction) {
+        showAlert('Ошибка', 'Справочники этапов или действий не заполнены администратором. Создание маршрута невозможно.');
+        return;
+    }
 
     populateRouteModalSelects();
 
@@ -165,9 +177,10 @@ function closeRouteModal() {
     isCreatingNewRoute = false;
 }
 
-function readDeadline(inputId) {
+function formatDeadline(inputId) {
     const v = document.getElementById(inputId).value;
-    return v ? v : null;
+    if (!v) return null;
+    return v.length === 16 ? v + ':00' : v;
 }
 
 function validateDeadline(value, label) {
@@ -194,18 +207,18 @@ async function submitRoute() {
             if (!approvalId) throw new Error('Выберите исполнителя для согласования');
             if (!signId)     throw new Error('Выберите исполнителя для подписания');
 
-            const dApprove = readDeadline('deadlineApproval');
-            const dSign = readDeadline('deadlineSign');
+            const dApprove = formatDeadline('deadlineApproval');
+            const dSign = formatDeadline('deadlineSign');
             validateDeadline(dApprove, 'Согласование');
             validateDeadline(dSign, 'Подписание');
 
             stages.push({ stageCode: approvalStage.code, actionCode: approveAction.code, assigneeId: parseInt(approvalId), deadline: dApprove });
             stages.push({ stageCode: signStage.code, actionCode: signAction.code, assigneeId: parseInt(signId), deadline: dSign });
         } else {
-            paperApproverId = document.getElementById('paperApprover').value;
-            paperSignerId = document.getElementById('paperSigner').value;
-            if (!paperApproverId) throw new Error('Укажите, кто согласовал документ на бумаге');
-            if (!paperSignerId) throw new Error('Укажите, кто подписал документ на бумаге');
+            paperApproverId = parseInt(document.getElementById('paperApprover').value);
+            paperSignerId = parseInt(document.getElementById('paperSigner').value);
+            if (isNaN(paperApproverId)) throw new Error('Укажите, кто согласовал документ на бумаге');
+            if (isNaN(paperSignerId)) throw new Error('Укажите, кто подписал документ на бумаге');
         }
 
         const registerId = document.getElementById('assigneeRegister').value;
@@ -213,8 +226,8 @@ async function submitRoute() {
         if (!registerId) throw new Error('Выберите исполнителя для регистрации');
         if (!reviewId)   throw new Error('Выберите исполнителя для рассмотрения');
 
-        const dRegister = readDeadline('deadlineRegister');
-        const dReview   = readDeadline('deadlineReview');
+        const dRegister = formatDeadline('deadlineRegister');
+        const dReview   = formatDeadline('deadlineReview');
         validateDeadline(dRegister, 'Регистрация');
         validateDeadline(dReview, 'Рассмотрение');
 
@@ -231,6 +244,9 @@ async function submitRoute() {
             openDocumentView(currentRouteDocId);
         } else {
             const doc = await createDocument();
+            if (!doc || !doc.documentId) {
+                throw new Error('Сервер не вернул ID созданного документа. Обратитесь к администратору.');
+            }
             await uploadFiles(doc.documentId);
             await createRoute(
                 doc.documentId, stages, isPaperFlow, paperApproverId, paperSignerId,
@@ -283,6 +299,10 @@ async function createDocument() {
 }
 
 async function uploadFiles(docId) {
+    if (!docId || isNaN(docId)) {
+        throw new Error('Не удалось определить ID документа для загрузки файлов.');
+    }
+
     const fileInput = document.getElementById('fileInput');
     const files = fileInput ? Array.from(fileInput.files) : [];
     for (const file of files) {
@@ -302,6 +322,10 @@ async function uploadFiles(docId) {
 }
 
 async function createRoute(docId, stages, isPaperFlow, paperApproverId, paperSignerId, paperApproveStageCode, paperSignStageCode, paperApproveActionCode, paperSignActionCode) {
+    if (!docId || isNaN(docId)) {
+        throw new Error('Не удалось определить ID документа для создания маршрута.');
+    }
+
     const payload = {
         stages: stages,
         isPaperFlow: isPaperFlow,
@@ -378,27 +402,31 @@ async function openDocumentView(id) {
     document.getElementById('dashboardView').style.display = 'none';
     document.getElementById('documentView').style.display = 'block';
 
-    document.getElementById('btnRegisterDoc').style.display = 'none';
-    document.getElementById('btnEditDoc').style.display = 'none';
-    document.getElementById('btnSaveDoc').style.display = 'none';
-    document.getElementById('btnAddFileVersion').style.display = 'none';
-    document.getElementById('btnCreateRoute').style.display = 'none';
+    ['btnEditDoc', 'btnSaveDoc', 'btnAddFileVersion', 'btnCreateRoute', 'btnRegisterDoc']
+        .forEach(function (btnId) {
+            var el = document.getElementById(btnId);
+            if (el) el.style.display = 'none';
+        });
 
-    document.getElementById('mv_title').disabled = true;
-    document.getElementById('mv_content').disabled = true;
+    var titleInput   = document.getElementById('mv_title');
+    var contentInput = document.getElementById('mv_content');
+    if (titleInput)   titleInput.disabled = true;
+    if (contentInput) contentInput.disabled = true;
 
     try {
         await fetch('/api/documents/' + id + '/mark-read', {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + token }
         });
-    } catch (_) { /* не критично */ }
+    } catch (_) { }
 
     var fromTasks = currentSection && currentSection.type === 'task';
     switchDocTab(fromTasks ? 'route' : 'doc');
 
     try {
-        var resp = await fetch('/api/documents/' + id, { headers: { 'Authorization': 'Bearer ' + token } });
+        var resp = await fetch('/api/documents/' + id, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
         if (!resp.ok) {
             var err = await resp.json().catch(function () { return {}; });
             throw new Error(err.error || 'Ошибка загрузки документа');
@@ -411,36 +439,77 @@ async function openDocumentView(id) {
         currentDocCategoryCode = doc.category ? doc.category.code : null;
         var files = data.files || [];
 
-        currentDocAuthor = doc.author ? (doc.author.lastName + ' ' + (doc.author.firstName ? doc.author.firstName.charAt(0) : '') + '.' +
-            (doc.author.middleName ? ' ' + doc.author.middleName.charAt(0) + '.' : '')) : '—';
+        currentDocAuthor = doc.author
+            ? (doc.author.lastName + ' ' +
+               (doc.author.firstName ? doc.author.firstName.charAt(0) : '') + '.' +
+               (doc.author.middleName ? ' ' + doc.author.middleName.charAt(0) + '.' : ''))
+            : '—';
 
-        document.getElementById('mv_title').value = doc.title || '—';
-        document.getElementById('mv_content').value = doc.content || '—';
-        document.getElementById('mv_type').value = doc.documentType ? doc.documentType.name : '—';
-        document.getElementById('mv_category').value = doc.category ? doc.category.name : '—';
-        document.getElementById('mv_nomenclature').value = doc.nomenclature
+        if (titleInput)   titleInput.value   = doc.title || '—';
+        if (contentInput) contentInput.value = doc.content || '—';
+
+        var typeEl = document.getElementById('mv_type');
+        if (typeEl) typeEl.value = doc.documentType ? doc.documentType.name : '—';
+
+        var catEl = document.getElementById('mv_category');
+        if (catEl) catEl.value = doc.category ? doc.category.name : '—';
+
+        var nomEl = document.getElementById('mv_nomenclature');
+        if (nomEl) nomEl.value = doc.nomenclature
             ? (doc.nomenclature.caseCode + ' — ' + doc.nomenclature.title)
             : '—';
-        document.getElementById('mv_reg').value = doc.registrationNumber || 'Не зарегистрирован';
-        document.getElementById('mv_status').value = STATUS_MAP[doc.status] || doc.status;
-        document.getElementById('mv_author').value = doc.author ? (doc.author.lastName + ' ' + doc.author.firstName + ' ' + (doc.author.middleName || '')) : '—';
-        document.getElementById('mv_created').value = doc.createdAt ? new Date(doc.createdAt).toLocaleString('ru-RU') : '—';
 
-        if (data.canRegister) document.getElementById('btnRegisterDoc').style.display = 'inline-block';
-        if (data.canEdit) {
-            document.getElementById('btnEditDoc').style.display = 'inline-block';
-            document.getElementById('btnAddFileVersion').style.display = 'inline-block';
-            if (doc.status === 'DRAFT' || doc.status === 'REVISION') {
-                document.getElementById('btnCreateRoute').style.display = 'inline-block';
-            }
+        var regEl = document.getElementById('mv_reg');
+        if (regEl) regEl.value = doc.registrationNumber || 'Не зарегистрирован';
+
+        var statusEl = document.getElementById('mv_status');
+        if (statusEl) statusEl.value = STATUS_MAP[doc.status] || doc.status;
+
+        var authorEl = document.getElementById('mv_author');
+        if (authorEl) authorEl.value = doc.author
+            ? (doc.author.lastName + ' ' + doc.author.firstName + ' ' + (doc.author.middleName || ''))
+            : '—';
+
+        var createdEl = document.getElementById('mv_created');
+        if (createdEl) createdEl.value = doc.createdAt
+            ? new Date(doc.createdAt).toLocaleString('ru-RU') : '—';
+
+        var docViewTitleEl = document.getElementById('docViewTitle');
+        if (docViewTitleEl) docViewTitleEl.textContent = doc.title || 'Документ';
+
+        var authorId  = (doc.author && doc.author.userId != null)
+                        ? Number(doc.author.userId) : null;
+        var myId      = (currentUserId != null) ? Number(currentUserId) : null;
+        var sameAuthor = (authorId !== null && myId !== null && authorId === myId);
+
+        var isAuthor = sameAuthor || data.isAuthor === true;
+        var isAdmin  = (String(roleCode || '').toUpperCase() === 'ADMIN') || data.isAdmin === true;
+
+        var isEditableStatus = (doc.status === 'DRAFT' || doc.status === 'REVISION');
+        var canEdit    = (data.canEdit === true)    || ((isAuthor || isAdmin) && isEditableStatus);
+        var canAddFile = (data.canAddFile === true) || ((isAuthor || isAdmin)
+                            && doc.status !== 'COMPLETED'
+                            && doc.status !== 'ARCHIVED');
+
+        function showBtn(btnId, show) {
+            var el = document.getElementById(btnId);
+            if (el) el.style.display = show ? 'inline-block' : 'none';
         }
+
+        showBtn('btnEditDoc',        canEdit);
+        showBtn('btnCreateRoute',    canEdit && isEditableStatus);
+        showBtn('btnAddFileVersion', canAddFile);
+        showBtn('btnRegisterDoc',    data.canRegister === true);
+
 
         var filesContainer = document.getElementById('mv_files');
         if (files.length > 0) {
             filesContainer.innerHTML = files.map(function (f) {
                 return '<div class="file-row">' +
-                    '<span>📄 ' + escapeHtml(f.fileName) + ' <span class="muted">(Версия ' + f.versionNumber + ')</span></span>' +
-                    '<a class="action-link" href="/api/documents/' + id + '/files/' + f.fileId + '/download" ' +
+                    '<span>📄 ' + escapeHtml(f.fileName) +
+                    ' <span class="muted">(Версия ' + f.versionNumber + ')</span></span>' +
+                    '<a class="action-link" href="/api/documents/' + id +
+                    '/files/' + f.fileId + '/download" ' +
                     'onclick="downloadWithToken(event, this)">Скачать</a>' +
                     '</div>';
             }).join('');
@@ -453,9 +522,10 @@ async function openDocumentView(id) {
         return;
     }
 
-    // Загрузка маршрута
     try {
-        var respR = await fetch('/api/documents/' + id + '/routes', { headers: { 'Authorization': 'Bearer ' + token } });
+        var respR = await fetch('/api/documents/' + id + '/routes', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
         var container = document.getElementById('routeTimeline');
 
         if (respR.ok) {
@@ -471,20 +541,25 @@ async function openDocumentView(id) {
                     var statusText = ROUTE_STATUS_MAP[r.status] || r.status;
 
                     var toUser = r.assignedUser
-                        ? r.assignedUser.lastName + ' ' + (r.assignedUser.firstName ? r.assignedUser.firstName.charAt(0) : '') + '.' +
+                        ? r.assignedUser.lastName + ' ' +
+                          (r.assignedUser.firstName ? r.assignedUser.firstName.charAt(0) : '') + '.' +
                           (r.assignedUser.middleName ? ' ' + r.assignedUser.middleName.charAt(0) + '.' : '')
                         : 'Не назначен';
+
                     var fromUser = index === 0
                         ? currentDocAuthor
                         : (routes[index - 1].assignedUser
-                            ? routes[index - 1].assignedUser.lastName + ' ' + (routes[index - 1].assignedUser.firstName ? routes[index - 1].assignedUser.firstName.charAt(0) : '') + '.'
+                            ? routes[index - 1].assignedUser.lastName + ' ' +
+                              (routes[index - 1].assignedUser.firstName
+                                  ? routes[index - 1].assignedUser.firstName.charAt(0) : '') + '.'
                             : 'Предыдущий этап');
 
-                    var taskType = (r.stage ? r.stage.name : 'Этап') + ' → ' + (r.action ? r.action.name : 'Действие');
+                    var taskType = (r.stage ? r.stage.name : 'Этап') +
+                                   ' → ' + (r.action ? r.action.name : 'Действие');
                     var indent = index * 40;
 
                     var isMyActiveTask = r.assignedUser
-                        && r.assignedUser.userId === currentUserId
+                        && Number(r.assignedUser.userId) === Number(currentUserId)
                         && (r.status === 'PENDING' || r.status === 'IN_PROGRESS');
 
                     var taskActionsHtml = '';
@@ -495,48 +570,67 @@ async function openDocumentView(id) {
                         }
                         taskActionsHtml =
                             '<div class="task-actions">' +
-                                '<button class="button button--primary" onclick="openActionModal(' + r.routeId + ', \'' + r.action.code + '\', \'' + mainBtnLabel + '\')">' + mainBtnLabel + '</button>' +
-                                '<button class="button button--secondary" style="color: #b00020; border-color: #b00020;" onclick="openActionModal(' + r.routeId + ', \'REJECT\', \'Отклонить\')">Отклонить</button>' +
-                                '<button class="button button--secondary" onclick="openActionModal(' + r.routeId + ', \'REDIRECT\', \'Перенаправить\')">Перенаправить</button>' +
+                                '<button class="button button--primary" onclick="openActionModal(' +
+                                    r.routeId + ', \'' + r.action.code + '\', \'' + mainBtnLabel + '\')">' +
+                                    mainBtnLabel + '</button>' +
+                                '<button class="button button--secondary" ' +
+                                    'style="color: #b00020; border-color: #b00020;" ' +
+                                    'onclick="openActionModal(' + r.routeId + ', \'REJECT\', \'Отклонить\')">' +
+                                    'Отклонить</button>' +
+                                '<button class="button button--secondary" ' +
+                                    'onclick="openActionModal(' + r.routeId + ', \'REDIRECT\', \'Перенаправить\')">' +
+                                    'Перенаправить</button>' +
                             '</div>';
                     }
 
-                    return '<div class="step-card ' + (isMyActiveTask ? 'active-task' : '') + '" style="margin-left: ' + indent + 'px;">' +
+                    return '<div class="step-card ' + (isMyActiveTask ? 'active-task' : '') +
+                        '" style="margin-left: ' + indent + 'px;">' +
                         '<div class="step-badge">' + r.stepNumber + '</div>' +
                         '<div class="step-header">' +
                             '<div class="step-title">' + taskType + '</div>' +
                             '<span class="step-status ' + r.status + '">' + statusText + '</span>' +
                         '</div>' +
                         '<div class="step-meta">' +
-                            '<div class="meta-item"><span class="meta-label">Отправил</span><span class="meta-value">' + fromUser + '</span></div>' +
-                            '<div class="meta-item"><span class="meta-label">Кому</span><span class="meta-value">' + toUser + '</span></div>' +
-                            '<div class="meta-item"><span class="meta-label">Когда отправлено</span><span class="meta-value">' + sentDate + '</span></div>' +
-                            '<div class="meta-item"><span class="meta-label">Срок</span><span class="meta-value">' + deadlineDate + '</span></div>' +
-                            '<div class="meta-item" style="grid-column: span 2;"><span class="meta-label">Дата выполнения</span><span class="meta-value">' + completedDate + '</span></div>' +
+                            '<div class="meta-item"><span class="meta-label">Отправил</span>' +
+                                '<span class="meta-value">' + fromUser + '</span></div>' +
+                            '<div class="meta-item"><span class="meta-label">Кому</span>' +
+                                '<span class="meta-value">' + toUser + '</span></div>' +
+                            '<div class="meta-item"><span class="meta-label">Когда отправлено</span>' +
+                                '<span class="meta-value">' + sentDate + '</span></div>' +
+                            '<div class="meta-item"><span class="meta-label">Срок</span>' +
+                                '<span class="meta-value">' + deadlineDate + '</span></div>' +
+                            '<div class="meta-item" style="grid-column: span 2;">' +
+                                '<span class="meta-label">Дата выполнения</span>' +
+                                '<span class="meta-value">' + completedDate + '</span></div>' +
                         '</div>' +
-                        (r.instruction ? '<div class="step-instruction">' + escapeHtml(r.instruction) + '</div>' : '') +
-                        (r.comment ? '<div class="step-comment">💬 Комментарий: ' + escapeHtml(r.comment) + '</div>' : '') +
+                        (r.instruction ? '<div class="step-instruction">' +
+                            escapeHtml(r.instruction) + '</div>' : '') +
+                        (r.comment ? '<div class="step-comment">💬 Комментарий: ' +
+                            escapeHtml(r.comment) + '</div>' : '') +
                         taskActionsHtml +
                     '</div>';
                 }).join('');
             }
         } else {
-            container.innerHTML = '<div class="muted" style="text-align:center;color:#b00020;">Не удалось загрузить маршрут</div>';
+            container.innerHTML = '<div class="muted" style="text-align:center;color:#b00020;">' +
+                'Не удалось загрузить маршрут</div>';
         }
     } catch (e) {
-        document.getElementById('routeTimeline').innerHTML = '<div class="muted" style="text-align:center;color:#b00020;">Ошибка загрузки маршрута</div>';
+        document.getElementById('routeTimeline').innerHTML =
+            '<div class="muted" style="text-align:center;color:#b00020;">Ошибка загрузки маршрута</div>';
     }
 
-    // Загрузка истории
     try {
-        var respH = await fetch('/api/documents/' + id + '/history', { headers: { 'Authorization': 'Bearer ' + token } });
+        var respH = await fetch('/api/documents/' + id + '/history', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
         var tbody = document.getElementById('historyTableBody');
-
         if (respH.ok) {
             var history = await respH.json();
             renderHistoryTable(history || []);
         } else {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#b00020;">Не удалось загрузить историю</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#b00020;">' +
+                'Не удалось загрузить историю</td></tr>';
         }
     } catch (e) {
         document.getElementById('historyTableBody').innerHTML =
@@ -608,13 +702,20 @@ function switchDocTab(tabName) {
 }
 
 function enableEditMode() {
-    document.getElementById('mv_title').disabled = false;
-    document.getElementById('mv_content').disabled = false;
-    document.getElementById('btnEditDoc').style.display = 'none';
-    document.getElementById('btnRegisterDoc').style.display = 'none';
-    document.getElementById('btnCreateRoute').style.display = 'none';
-    document.getElementById('btnSaveDoc').style.display = 'inline-block';
-    document.getElementById('btnAddFileVersion').style.display = 'inline-block';
+    var titleEl   = document.getElementById('mv_title');
+    var contentEl = document.getElementById('mv_content');
+    if (titleEl)   titleEl.disabled = false;
+    if (contentEl) contentEl.disabled = false;
+
+    var btnEdit  = document.getElementById('btnEditDoc');
+    var btnRoute = document.getElementById('btnCreateRoute');
+    var btnSave  = document.getElementById('btnSaveDoc');
+    var btnFile  = document.getElementById('btnAddFileVersion');
+
+    if (btnEdit)  btnEdit.style.display  = 'none';
+    if (btnRoute) btnRoute.style.display = 'none';
+    if (btnSave)  btnSave.style.display  = 'inline-block';
+    if (btnFile)  btnFile.style.display  = 'inline-block';
     switchDocTab('doc');
 }
 
@@ -661,7 +762,6 @@ function addFileVersion() {
     input.click();
 }
 
-// РЕГИСТРАЦИЯ
 async function openRegisterModal() {
     try {
         var resp = await fetch('/api/documents/' + currentDocId + '/preview-reg-number',
@@ -718,7 +818,6 @@ async function submitRegistration() {
 
 function registerDocument() { openRegisterModal(); }
 
-// ДЕЙСТВИЯ С ЗАДАЧЕЙ (REVIEW с множественным выбором)
 async function openActionModal(routeId, actionCode, actionName) {
     if (actionCode === 'REGISTER') { openRegisterModal(); return; }
 
@@ -749,6 +848,7 @@ async function openActionModal(routeId, actionCode, actionName) {
                 method: 'POST',
                 headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                    documentId: currentDocId,
                     actionCode: permAction,
                     documentTypeId: currentDocData.documentType ? currentDocData.documentType.documentTypeId : null,
                     categoryId: currentDocData.category ? currentDocData.category.categoryId : null,
@@ -757,6 +857,8 @@ async function openActionModal(routeId, actionCode, actionName) {
                 })
             });
             var users = await resp.json();
+
+            if (!Array.isArray(users)) throw new Error('Ошибка загрузки исполнителей');
 
             if (!users.length) {
                 userSelect.innerHTML = '<option value="">Нет подходящих сотрудников</option>';
@@ -782,7 +884,7 @@ async function openActionModal(routeId, actionCode, actionName) {
                         }).join('');
                 }
             }
-        } catch (_) {
+        } catch (e) {
             userSelect.innerHTML = '<option value="">Ошибка загрузки</option>';
         }
 
@@ -826,10 +928,10 @@ async function submitTaskAction() {
     if (currentActionCode === 'REDIRECT') {
         var newAssigneeId = userSelect.value;
         if (!newAssigneeId) { showAlert('Внимание', 'Выберите сотрудника.'); return; }
-        payload.newAssigneeId = newAssigneeId;
+        payload.newAssigneeId = parseInt(newAssigneeId);
     }
     else if (currentActionCode === 'REVIEW') {
-        var selectedOptions = Array.from(userSelect.selectedOptions).map(opt => opt.value).filter(v => v);
+        var selectedOptions = Array.from(userSelect.selectedOptions).map(opt => parseInt(opt.value)).filter(v => !isNaN(v));
         if (selectedOptions.length === 0) {
             showAlert('Внимание', 'Выберите хотя бы одного исполнителя.');
             return;
@@ -837,7 +939,7 @@ async function submitTaskAction() {
         payload.executorIds = selectedOptions;
 
         if (!deadline) { showAlert('Внимание', 'Укажите срок исполнения.'); return; }
-        payload.deadline = deadline + ':00';
+        payload.deadline = deadline.length === 16 ? deadline + ':00' : deadline;
     }
 
     try {
@@ -894,7 +996,7 @@ function printRoute() {
     printSection('routeTimeline', 'Маршрут документа: ' + (currentDocData ? currentDocData.title : ''));
 }
 
-// ЭКСПОРТ ИСПОЛНИТЕЛЬСКОЙ ДИСЦИПЛИНЫ В PDF (ПЕЧАТЬ)
+// ЭКСПОРТ В PDF ЧЕРЕЗ ОКНО ПЕЧАТИ
 function printDiscipline() {
     var el = document.getElementById('dashboardView');
     if (!el) { showAlert('Внимание', 'Откройте аналитику'); return; }

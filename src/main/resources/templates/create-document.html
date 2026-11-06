@@ -1,117 +1,288 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Создание документа</title>
+    <link rel="stylesheet" th:href="@{/css/styles.css}">
+    <link rel="stylesheet" th:href="@{/css/main.css}">
+    <style>
+        .file-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 16px;
+            background: var(--bg-pink-light);
+            border: 1px solid var(--border-pink);
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .file-item-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--text-dark);
+            font-weight: 500;
+        }
+        .file-item-remove {
+            background: transparent;
+            border: none;
+            color: var(--magenta);
+            font-weight: 600;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+        .file-item-remove:hover {
+            background: var(--bg-pink-medium);
+        }
+        .btn-upload {
+            width: 100%;
+            border: 1px dashed var(--magenta);
+            background: transparent;
+            color: var(--magenta);
+            border-radius: 8px;
+            padding: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-upload:hover {
+            background: var(--bg-pink-light);
+        }
+    </style>
+</head>
 <body>
-<div th:fragment="documentView" id="documentView" style="display: none;">
-    <div class="page-heading" style="margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between;">
-        <div style="display: flex; align-items: center; gap: 16px;">
-            <button class="button button--secondary" onclick="closeDocumentView()">← Назад</button>
-        </div>
-        <div style="display: flex; gap: 12px;">
-            <button class="button button--primary" id="btnCreateRoute" onclick="openRouteModalForExisting(currentDocId)" style="display: none;">Направить по маршруту</button>
-            <button class="button button--secondary" id="btnAddFileVersion" onclick="addFileVersion()" style="display: none;">+ Новая версия файла</button>
-            <button class="button button--primary" id="btnRegisterDoc" onclick="registerDocument()" style="display: none;">Зарегистрировать</button>
-            <button class="button button--secondary" id="btnEditDoc" onclick="enableEditMode()" style="display: none;">Редактировать</button>
-            <button class="button button--primary" id="btnSaveDoc" onclick="saveDocChanges()" style="display: none;">Сохранить</button>
-        </div>
-    </div>
 
-    <div class="doc-view-container">
-        <div class="doc-tabs">
-            <button class="doc-tab-btn" id="btnTabDoc" onclick="switchDocTab('doc')">Документ</button>
-            <button class="doc-tab-btn" id="btnTabRoute" onclick="switchDocTab('route')">Ветка задач</button>
-            <button class="doc-tab-btn" id="btnTabHistory" onclick="switchDocTab('history')">История</button>
+<div class="app-shell" style="grid-template-columns: 1fr; grid-template-rows: 72px 1fr;">
+    <!-- Шапка -->
+    <header class="topbar">
+        <div class="topbar-left" style="gap: 24px;">
+            <div class="brand"><div class="brand-mark">Д</div></div>
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <button class="button button--secondary" onclick="window.location.href='/main'">← Назад</button>
+                <h1 style="margin: 0; font-size: 20px; font-weight: 700; color: var(--text-dark);">Создание документа</h1>
+            </div>
         </div>
+        <div class="topbar-right">
+            <button class="button button--secondary" onclick="saveAsDraft()">Сохранить как черновик</button>
+            <button class="button button--primary" onclick="openRouteModalForNew()">Сохранить и отправить</button>
+        </div>
+    </header>
 
-        <!-- Вкладка 1: Документ -->
-        <div id="tab-doc" class="tab-content">
+    <!-- Основной контент -->
+    <main class="content">
+        <div class="doc-view-container">
             <div class="two-col-layout">
+                <!-- Левая колонка -->
                 <div class="col">
                     <div class="section-card">
                         <h3>Основная информация</h3>
+
                         <div class="form-group">
-                            <label>Название документа</label>
-                            <input type="text" id="mv_title" disabled>
+                            <label style="color: var(--magenta);">Название документа (формируется автоматически)</label>
+                            <!-- Убрали value, теперь оно пустое -->
+                            <input type="text" id="title" disabled value="Будет сформировано автоматически..." style="background: var(--bg-milk); border-color: transparent; font-weight: 500;">
                         </div>
+
                         <div class="form-group">
                             <label>Содержание</label>
-                            <textarea id="mv_content" rows="8" disabled></textarea>
+                            <textarea id="content" rows="6" placeholder="Введите текст документа..."></textarea>
                         </div>
+
                         <div class="form-group">
-                            <label>Тип документа</label>
-                            <input type="text" id="mv_type" disabled>
+                            <label>Категория *</label>
+                            <!-- Добавили вызов updateGeneratedTitle() -->
+                            <select id="categoryId" onchange="onCreateCategoryChange(); updateGeneratedTitle();" required>
+                                <option value="">— Загрузка... —</option>
+                            </select>
                         </div>
+
                         <div class="form-group">
-                            <label>Категория</label>
-                            <input type="text" id="mv_category" disabled>
+                            <label>Тип документа *</label>
+                            <!-- Добавили вызов updateGeneratedTitle() -->
+                            <select id="typeId" onchange="updateGeneratedTitle()" required>
+                                <option value="">— Сначала выберите категорию —</option>
+                            </select>
                         </div>
+
                         <div class="form-group">
-                            <label>Автор</label>
-                            <input type="text" id="mv_author" disabled>
+                            <label>Номенклатура дел *</label>
+                            <select id="nomenclatureId" required>
+                                <option value="">— Загрузка... —</option>
+                            </select>
                         </div>
                     </div>
                 </div>
 
+                <!-- Правая колонка -->
                 <div class="col">
                     <div class="section-card">
                         <h3>Файлы</h3>
-                        <div id="mv_files" class="muted">Файлы отсутствуют</div>
-                    </div>
-                    <div class="section-card">
-                        <h3>Реквизиты документа</h3>
-                        <div class="form-group">
-                            <label>Номенклатура дел</label>
-                            <input type="text" id="mv_nomenclature" disabled>
-                        </div>
-                        <div class="form-group">
-                            <label>Рег. номер</label>
-                            <input type="text" id="mv_reg" disabled>
-                        </div>
-                        <div class="form-group">
-                            <label>Статус</label>
-                            <input type="text" id="mv_status" disabled>
-                        </div>
-                        <div class="form-group">
-                            <label>Дата создания</label>
-                            <input type="text" id="mv_created" disabled>
-                        </div>
+                        <input type="file" id="fileInput" multiple style="display: none;" onchange="handleFileSelect()">
+
+                        <button type="button" class="btn-upload" onclick="document.getElementById('fileInput').click()">
+                            + Прикрепить файлы
+                        </button>
+
+                        <div id="fileList" class="file-list"></div>
                     </div>
                 </div>
             </div>
         </div>
-
-        <!-- Вкладка 2: Ветка задач -->
-        <div id="tab-route" class="tab-content">
-            <div style="display:flex; justify-content:flex-end; margin-bottom:16px;">
-                <button class="button button--secondary" onclick="printRoute()">🖨 Печать маршрута</button>
-            </div>
-            <div class="timeline-stepper" id="routeTimeline">
-                <div class="muted" style="text-align:center;">Загрузка...</div>
-            </div>
-        </div>
-
-        <!-- Вкладка 3: История -->
-        <div id="tab-history" class="tab-content">
-            <div style="display:flex; justify-content:flex-end; margin-bottom:16px;">
-                <button class="button button--secondary" onclick="printHistory()">🖨 Печать истории</button>
-            </div>
-            <div class="table-shell" id="historyTableContainer">
-                <table>
-                    <thead>
-                    <tr>
-                        <th style="width: 140px;">Дата</th>
-                        <th style="width: 100px;">Время</th>
-                        <th>ФИО</th>
-                        <th>Действие</th>
-                        <th>Комментарий</th>
-                    </tr>
-                    </thead>
-                    <tbody id="historyTableBody">
-                    <tr><td colspan="5" class="muted" style="text-align:center;">Загрузка...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+    </main>
 </div>
+
+<div th:replace="~{fragments/modals :: modals}"></div>
+
+<script th:src="@{/js/core.js}"></script>
+<script th:src="@{/js/documents.js}"></script>
+
+<script>
+    // ==========================================
+    // ЛОГИКА ДИНАМИЧЕСКОГО НАЗВАНИЯ ДОКУМЕНТА
+    // ==========================================
+
+    // Функция для получения короткого имени (Иванов И. И.)
+    function getShortName() {
+        var fullName = localStorage.getItem('fullName') || 'Пользователь';
+        var parts = fullName.trim().split(/\s+/);
+        if (parts.length >= 3) {
+            return parts[0] + ' ' + parts[1].charAt(0) + '. ' + parts[2].charAt(0) + '.';
+        } else if (parts.length === 2) {
+            return parts[0] + ' ' + parts[1].charAt(0) + '.';
+        }
+        return fullName;
+    }
+
+    // Функция обновления поля Title
+    function updateGeneratedTitle() {
+        var catSelect = document.getElementById('categoryId');
+        var typeSelect = document.getElementById('typeId');
+        var titleInput = document.getElementById('title');
+
+        var catName = '';
+        var typeName = '';
+
+        // Берем текст выбранной опции, если она не является плейсхолдером
+        if (catSelect.selectedIndex > 0) {
+            catName = catSelect.options[catSelect.selectedIndex].text;
+        }
+        if (typeSelect.selectedIndex > 0) {
+            typeName = typeSelect.options[typeSelect.selectedIndex].text;
+        }
+
+        // Если выбраны и категория, и тип — формируем красивую строку
+        if (catName && typeName) {
+            var authorShort = getShortName();
+            var generated = catName + ' ' + typeName + ' от ' + authorShort;
+            titleInput.value = generated.replace(/\s+/g, ' ').trim();
+        } else {
+            titleInput.value = 'Будет сформировано автоматически...';
+        }
+    }
+
+    // ==========================================
+    // ЗАГРУЗКА СПРАВОЧНИКОВ И ОСТАЛЬНАЯ ЛОГИКА
+    // ==========================================
+
+    document.addEventListener('DOMContentLoaded', async function () {
+        // Сразу обновляем заголовок (чтобы подставилось имя)
+        updateGeneratedTitle();
+
+        try {
+            const headers = { 'Authorization': 'Bearer ' + token };
+            const [cats, types, noms] = await Promise.all([
+                fetch('/api/ref/doc-categories', { headers }).then(r => r.json()),
+                fetch('/api/ref/doc-types',      { headers }).then(r => r.json()),
+                fetch('/api/ref/nomenclatures',  { headers }).then(r => r.json())
+            ]);
+
+            allCategories = (cats || []).filter(c => c.isActive !== false);
+            allDocTypes = (types || []).filter(t => t.isActive !== false);
+            allNomenclatures = (noms || []).filter(n => n.isActive !== false);
+
+            var catSelect = document.getElementById('categoryId');
+            catSelect.innerHTML = '<option value="">— Выберите категорию —</option>' +
+                allCategories.map(c => `<option value="${c.categoryId}">${escapeHtml(c.name)}</option>`).join('');
+
+            var nomSelect = document.getElementById('nomenclatureId');
+            nomSelect.innerHTML = '<option value="">— Выберите номенклатуру дел —</option>' +
+                allNomenclatures.map(n => `<option value="${n.nomenclatureId}">${escapeHtml(n.caseCode)} — ${escapeHtml(n.title)}</option>`).join('');
+
+        } catch (e) {
+            showAlert('Ошибка', 'Не удалось загрузить справочники: ' + e.message);
+        }
+    });
+
+    function onCreateCategoryChange() {
+        var catId = parseInt(document.getElementById('categoryId').value);
+        var typeSelect = document.getElementById('typeId');
+
+        if (!catId) {
+            typeSelect.innerHTML = '<option value="">— Сначала выберите категорию —</option>';
+            return;
+        }
+
+        var filteredTypes = allDocTypes.filter(t => t.category && t.category.categoryId === catId);
+        if (!filteredTypes.length) {
+            typeSelect.innerHTML = '<option value="">— Нет типов для этой категории —</option>';
+            return;
+        }
+
+        typeSelect.innerHTML = '<option value="">— Выберите тип —</option>' +
+            filteredTypes.map(t => `<option value="${t.documentTypeId}">${escapeHtml(t.name)}</option>`).join('');
+    }
+
+    function handleFileSelect() {
+        var input = document.getElementById('fileInput');
+        var list = document.getElementById('fileList');
+        list.innerHTML = '';
+
+        Array.from(input.files).forEach((file, index) => {
+            var sizeStr = formatSize(file.size);
+            list.innerHTML += `
+                <div class="file-item">
+                    <div class="file-item-left">
+                        <span>📄 ${escapeHtml(file.name)}</span>
+                        <span style="color: var(--text-muted); font-size: 12px;">(${sizeStr})</span>
+                    </div>
+                    <button type="button" class="file-item-remove" onclick="removeFile(${index})">Удалить</button>
+                </div>
+            `;
+        });
+    }
+
+    function removeFile(index) {
+        var input = document.getElementById('fileInput');
+        var dt = new DataTransfer();
+        var files = Array.from(input.files);
+
+        files.splice(index, 1);
+        files.forEach(f => dt.items.add(f));
+        input.files = dt.files;
+
+        handleFileSelect();
+    }
+
+    async function saveAsDraft() {
+        try {
+            var doc = await createDocument();
+            if (!doc || !doc.documentId) throw new Error('Ошибка при создании');
+
+            await uploadFiles(doc.documentId);
+            showAlert('Успех', 'Документ сохранён как черновик');
+            window.location.href = '/main';
+        } catch (e) {
+            showAlert('Ошибка', e.message);
+        }
+    }
+</script>
 </body>
 </html>

@@ -91,7 +91,6 @@ public class DocumentController {
         this.posPermissionRepository = posPermissionRepository;
     }
 
-    // СПИСКИ И КАРТОЧКА
     @GetMapping("/my")
     @Transactional(readOnly = true)
     public ResponseEntity<?> getMyDocuments(
@@ -122,12 +121,21 @@ public class DocumentController {
 
         boolean canRegister = computeCanRegister(user, doc, routes);
         boolean canEdit = computeCanEdit(user, doc);
+        boolean isAuthor = doc.getAuthor() != null
+                && doc.getAuthor().getUserId().equals(userId);
+        boolean isAdmin = "ADMIN".equals(user.getBaseRole().getCode());
+
+        boolean canAddFile = (isAuthor || isAdmin)
+                && !Set.of("COMPLETED", "ARCHIVED").contains(doc.getStatus());
 
         Map<String, Object> response = new HashMap<>();
         response.put("document", doc);
         response.put("files", files);
         response.put("canRegister", canRegister);
         response.put("canEdit", canEdit);
+        response.put("isAuthor", isAuthor);
+        response.put("isAdmin", isAdmin);
+        response.put("canAddFile", canAddFile);
         response.put("isInRoute", isUserInRoute(userId, id));
         return ResponseEntity.ok(response);
     }
@@ -188,7 +196,6 @@ public class DocumentController {
         return ResponseEntity.ok(result);
     }
 
-    // ПОИСК ПОДХОДЯЩИХ СОТРУДНИКОВ
     @PostMapping("/eligible-users")
     @Transactional(readOnly = true)
     public ResponseEntity<?> getEligibleUsers(
@@ -219,7 +226,6 @@ public class DocumentController {
         return ResponseEntity.ok(eligible);
     }
 
-    // ОТМЕТКА ПРОЧТЕНИЯ ЗАДАЧИ
     @PostMapping("/{id}/mark-read")
     @Transactional
     public ResponseEntity<?> markAsRead(
@@ -263,7 +269,6 @@ public class DocumentController {
         ));
     }
 
-    // СОЗДАНИЕ / РЕДАКТИРОВАНИЕ
     @PostMapping
     @Transactional
     public ResponseEntity<?> createDocument(
@@ -402,7 +407,6 @@ public class DocumentController {
         return ResponseEntity.ok(doc);
     }
 
-    // ФАЙЛЫ
     @PostMapping(value = "/{id}/files", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Transactional
     public ResponseEntity<?> uploadFile(
@@ -498,7 +502,6 @@ public class DocumentController {
                 .body(resource);
     }
 
-    // ПРЕДПРОСМОТР РЕГИСТРАЦИОННОГО НОМЕРА
     @GetMapping("/{id}/preview-reg-number")
     @Transactional(readOnly = true)
     public ResponseEntity<?> previewRegNumber(
@@ -521,7 +524,8 @@ public class DocumentController {
         long seq = documentRepository.countRegistrationsByDeptAndCase(
                 doc.getDepartment().getDepartmentId(),
                 doc.getNomenclature().getCaseId()) + 1;
-        String regNumber = String.format("%s-%s-%03d", deptCode, caseCode, seq);
+
+        String regNumber = String.format("%s-%s/%03d", deptCode, caseCode, seq);
 
         Optional<LocalDate> lastDate = documentRepository.findLastRegistrationDate(
                 doc.getDepartment().getDepartmentId(), doc.getNomenclature().getCaseId());
@@ -532,7 +536,6 @@ public class DocumentController {
         return ResponseEntity.ok(result);
     }
 
-    // МАРШРУТ
     @PostMapping("/{id}/route")
     @Transactional
     public ResponseEntity<?> createRoute(
@@ -543,6 +546,10 @@ public class DocumentController {
         Long userId = extractUserId(authHeader);
         User author = userRepository.findById(userId).orElseThrow();
         Document doc = documentRepository.findById(id).orElseThrow();
+
+        if (doc.getAuthor() == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "У документа не указан автор"));
+        }
 
         boolean isAuthor = doc.getAuthor().getUserId().equals(userId);
         boolean isAdmin = "ADMIN".equals(author.getBaseRole().getCode());
@@ -593,13 +600,20 @@ public class DocumentController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Укажите, кто согласовал и подписал документ на бумаге"));
             }
 
-            User approver = userRepository.findById(approverId).orElseThrow(() -> new IllegalArgumentException("Согласующий не найден"));
-            User signer = userRepository.findById(signerId).orElseThrow(() -> new IllegalArgumentException("Подписант не найден"));
+            User approver = userRepository.findById(approverId)
+                    .orElseThrow(() -> new IllegalArgumentException("Согласующий не найден"));
+            User signer = userRepository.findById(signerId)
+                    .orElseThrow(() -> new IllegalArgumentException("Подписант не найден"));
+
+            RouteStage appStage = routeStageRepository.findByCode(approveStageCode)
+                    .orElseThrow(() -> new IllegalArgumentException("Неизвестный этап: " + approveStageCode));
+            DocAction appAction = docActionRepository.findByCode(approveActionCode)
+                    .orElseThrow(() -> new IllegalArgumentException("Неизвестное действие: " + approveActionCode));
 
             DocRoute approveRoute = new DocRoute();
             approveRoute.setDocument(doc);
-            approveRoute.setStage(routeStageRepository.findByCode(approveStageCode).orElseThrow(() -> new IllegalArgumentException("Неизвестный этап: " + approveStageCode)));
-            approveRoute.setAction(docActionRepository.findByCode(approveActionCode).orElseThrow(() -> new IllegalArgumentException("Неизвестное действие: " + approveActionCode)));
+            approveRoute.setStage(appStage);
+            approveRoute.setAction(appAction);
             approveRoute.setAssignedUser(approver);
             approveRoute.setStepNumber(step++);
             approveRoute.setStatus("COMPLETED");
@@ -609,10 +623,15 @@ public class DocumentController {
             approveRoute.setComment("Выполнено на бумаге");
             docRouteRepository.save(approveRoute);
 
+            RouteStage sStage = routeStageRepository.findByCode(signStageCode)
+                    .orElseThrow(() -> new IllegalArgumentException("Неизвестный этап: " + signStageCode));
+            DocAction sAction = docActionRepository.findByCode(signActionCode)
+                    .orElseThrow(() -> new IllegalArgumentException("Неизвестное действие: " + signActionCode));
+
             DocRoute signRoute = new DocRoute();
             signRoute.setDocument(doc);
-            signRoute.setStage(routeStageRepository.findByCode(signStageCode).orElseThrow(() -> new IllegalArgumentException("Неизвестный этап: " + signStageCode)));
-            signRoute.setAction(docActionRepository.findByCode(signActionCode).orElseThrow(() -> new IllegalArgumentException("Неизвестное действие: " + signActionCode)));
+            signRoute.setStage(sStage);
+            signRoute.setAction(sAction);
             signRoute.setAssignedUser(signer);
             signRoute.setStepNumber(step++);
             signRoute.setStatus("COMPLETED");
@@ -636,6 +655,9 @@ public class DocumentController {
         int prevIdx = -1;
         for (Map<String, Object> s : stages) {
             String action = (String) s.get("actionCode");
+            if (action == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Не указан код действия для этапа"));
+            }
             int idx = STAGE_ORDER.indexOf(action);
             if (idx < 0) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Недопустимое действие: " + action));
@@ -686,10 +708,10 @@ public class DocumentController {
 
             DocRoute route = new DocRoute();
             route.setDocument(doc);
-            route.setStage(routeStageRepository.findByCode(stageCode).orElseThrow(
-                    () -> new IllegalArgumentException("Неизвестный этап: " + stageCode)));
-            route.setAction(docActionRepository.findByCode(actionCode).orElseThrow(
-                    () -> new IllegalArgumentException("Неизвестное действие: " + actionCode)));
+            route.setStage(routeStageRepository.findByCode(stageCode)
+                    .orElseThrow(() -> new IllegalArgumentException("Неизвестный этап: " + stageCode)));
+            route.setAction(docActionRepository.findByCode(actionCode)
+                    .orElseThrow(() -> new IllegalArgumentException("Неизвестное действие: " + actionCode)));
             route.setAssignedUser(assignee);
             route.setStepNumber(step);
             route.setCreatedAt(now);
@@ -713,7 +735,6 @@ public class DocumentController {
         return ResponseEntity.ok(Map.of("message", "Маршрут успешно создан"));
     }
 
-    // РЕГИСТРАЦИЯ
     @PostMapping("/{id}/register")
     @Transactional
     public ResponseEntity<?> registerDocument(
@@ -784,7 +805,8 @@ public class DocumentController {
         long seq = documentRepository.countRegistrationsByDeptAndCase(
                 doc.getDepartment().getDepartmentId(),
                 lockedNom.getCaseId()) + 1;
-        String regNumber = String.format("%s-%s-%03d", deptCode, caseCode, seq);
+
+        String regNumber = String.format("%s-%s/%03d", deptCode, caseCode, seq);
 
         if (documentRepository.findByRegistrationNumber(regNumber).isPresent()) {
             return ResponseEntity.status(409)
@@ -831,7 +853,6 @@ public class DocumentController {
         ));
     }
 
-    // ДЕЙСТВИЯ
     @PostMapping("/{id}/action")
     @Transactional
     public ResponseEntity<?> performAction(
@@ -1020,7 +1041,11 @@ public class DocumentController {
 
                 String deadlineStr = (String) body.get("deadline");
                 if (deadlineStr != null && !deadlineStr.isEmpty()) {
-                    newRoute.setDeadline(LocalDateTime.parse(deadlineStr));
+                    try {
+                        newRoute.setDeadline(LocalDateTime.parse(deadlineStr));
+                    } catch (DateTimeParseException e) {
+                        return ResponseEntity.badRequest().body(Map.of("error", "Неверный формат срока исполнения"));
+                    }
                 } else {
                     newRoute.setDeadline(now.plusDays(7));
                 }
@@ -1062,7 +1087,6 @@ public class DocumentController {
         return ResponseEntity.ok(Map.of("message", "Действие выполнено успешно"));
     }
 
-    // ИСТОРИЯ / МАРШРУТ
     @GetMapping("/{id}/history")
     @Transactional(readOnly = true)
     public ResponseEntity<?> getHistory(
@@ -1091,7 +1115,6 @@ public class DocumentController {
         return ResponseEntity.ok(docRouteRepository.findByDocumentDocumentIdOrderByStepNumberAsc(id));
     }
 
-    // ВСПОМОГАТЕЛЬНЫЕ
     private Long extractUserId(String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             throw new IllegalArgumentException("Нет Bearer-токена");
@@ -1127,7 +1150,7 @@ public class DocumentController {
 
     private boolean hasAccessToDocument(User user, Document doc) {
         boolean isAdmin = "ADMIN".equals(user.getBaseRole().getCode());
-        boolean isAuthor = doc.getAuthor().getUserId().equals(user.getUserId());
+        boolean isAuthor = doc.getAuthor() != null && doc.getAuthor().getUserId().equals(user.getUserId());
         boolean isInRoute = isUserInRoute(user.getUserId(), doc.getDocumentId());
         boolean sameDept = doc.getDepartment() != null
                 && user.getDepartment() != null
@@ -1138,7 +1161,7 @@ public class DocumentController {
 
     private boolean computeCanEdit(User user, Document doc) {
         if (!EDITABLE_DOC_STATUSES.contains(doc.getStatus())) return false;
-        boolean isAuthor = doc.getAuthor().getUserId().equals(user.getUserId());
+        boolean isAuthor = doc.getAuthor() != null && doc.getAuthor().getUserId().equals(user.getUserId());
         boolean isAdmin = "ADMIN".equals(user.getBaseRole().getCode());
         return isAuthor || isAdmin;
     }
@@ -1171,6 +1194,7 @@ public class DocumentController {
     }
 
     private boolean hasPermission(User user, String actionCode, Document doc) {
+        if (user == null || user.getBaseRole() == null || actionCode == null) return false;
         if ("ADMIN".equals(user.getBaseRole().getCode())) return true;
 
         String permCode = switch (actionCode) {
@@ -1197,7 +1221,7 @@ public class DocumentController {
         Long sectorId = doc.getSector() != null ? doc.getSector().getSectorId() : null;
 
         boolean hasUserPerm = userPermissionRepository.findByUserUserId(user.getUserId()).stream().anyMatch(p ->
-                p.getPermission().getPermissionId().equals(permId)
+                p.getPermission() != null && p.getPermission().getPermissionId().equals(permId)
                         && Boolean.TRUE.equals(p.getIsAllowed())
                         && (p.getDocumentType() == null || p.getDocumentType().getDocumentTypeId().equals(typeId))
                         && (p.getCategory() == null || (catId != null && p.getCategory().getCategoryId().equals(catId)))
@@ -1210,7 +1234,7 @@ public class DocumentController {
         if (user.getPosition() == null) return false;
         return posPermissionRepository.findByPositionPositionIdAndIsAllowedTrue(
                 user.getPosition().getPositionId()).stream().anyMatch(p ->
-                p.getPermission().getPermissionId().equals(permId)
+                p.getPermission() != null && p.getPermission().getPermissionId().equals(permId)
                         && (p.getDocumentType() == null || p.getDocumentType().getDocumentTypeId().equals(typeId))
                         && (p.getCategory() == null || (catId != null && p.getCategory().getCategoryId().equals(catId)))
                         && (p.getDepartment() == null || (deptId != null && p.getDepartment().getDepartmentId().equals(deptId)))

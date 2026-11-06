@@ -7,8 +7,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
+import java.time.format.DateTimeParseException;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
@@ -21,6 +23,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<?> handleBadRequest(IllegalArgumentException e) {
         logger.warn("Ошибка бизнес-логики: {}", e.getMessage());
         return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+    }
+
+    @ExceptionHandler(DateTimeParseException.class)
+    public ResponseEntity<?> handleDateTimeParse(DateTimeParseException e) {
+        logger.warn("Ошибка парсинга даты: {}", e.getMessage());
+        return ResponseEntity.badRequest().body(Map.of("error", "Неверный формат даты. Используйте формат YYYY-MM-DDTHH:mm:ss"));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<?> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
+        logger.warn("Неверный тип параметра: {}", e.getMessage());
+        return ResponseEntity.badRequest().body(Map.of("error", "Неверный формат переданных данных (проверьте ID и даты)"));
     }
 
     @ExceptionHandler(NoSuchElementException.class)
@@ -48,6 +62,6 @@ public class GlobalExceptionHandler {
     public ResponseEntity<?> handleAny(Exception e) {
         logger.error("Необработанная ошибка", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of("error", "Внутренняя ошибка сервера"));
+                .body(Map.of("error", "Внутренняя ошибка сервера. Обратитесь к администратору."));
     }
 }
