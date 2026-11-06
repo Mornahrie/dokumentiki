@@ -17,18 +17,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
-/**
- * JWT-фильтр для /api/**.
- *
- * Публичные эндпоинты: /api/auth/login, /api/auth/change-password.
- * Для /api/admin/** требуется роль ADMIN (проверяется по БД, а не по токену).
- *
- * F025: пока пользователю требуется смена пароля (temporary / expired),
- * все эндпоинты, кроме /api/auth/change-password, возвращают 403.
- *
- * SEC-03: пользователь и его роль загружаются из БД на каждом запросе,
- * чтобы деактивация / смена роли вступали в силу немедленно.
- */
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
 
@@ -51,7 +39,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             return;
         }
 
-        // Публичные эндпоинты
         if (path.equals("/api/auth/login") || path.equals("/api/auth/change-password")) {
             chain.doFilter(req, resp);
             return;
@@ -67,7 +54,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             DecodedJWT jwt = JwtUtil.verifyToken(auth.substring(7));
             Long userId = Long.parseLong(jwt.getSubject());
 
-            // Загружаем пользователя из БД — источник истины для активности и роли
             User user = userRepository.findById(userId).orElse(null);
             if (user == null) {
                 sendJsonError(resp, 401, "Пользователь не найден");
@@ -78,7 +64,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 return;
             }
 
-            // F025: принудительная смена пароля
             boolean needsPasswordChange =
                     Boolean.TRUE.equals(user.getIsTemporaryPassword())
                             || PasswordUtils.isPasswordExpired(user.getPasswordChangedAt());
@@ -88,7 +73,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 return;
             }
 
-            // Роль берём из БД, а не из токена
             String actualRole = user.getBaseRole() != null ? user.getBaseRole().getCode() : null;
             if (path.startsWith("/api/admin/") && !"ADMIN".equals(actualRole)) {
                 sendJsonError(resp, 403, "Требуется роль администратора");

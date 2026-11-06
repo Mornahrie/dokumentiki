@@ -1,4 +1,4 @@
-/* ============ Таблицы и ресайз ============ */
+/* Таблицы */
 .table-wrapper {
     overflow-x: auto; margin-bottom: 24px;
     background: var(--bg-milk); border-radius: 16px;
@@ -11,8 +11,38 @@ th, td {
     text-align: left; white-space: nowrap; overflow: hidden;
     text-overflow: ellipsis; position: relative;
 }
-th { background: var(--bg-pink-light); color: var(--text-dark); font-weight: 600; font-size: 13px; user-select: none; }
+th {
+    background: var(--bg-pink-light);
+    color: var(--text-dark);
+    font-weight: 600;
+    font-size: 13px;
+    user-select: none;
+    position: relative;
+}
 tbody tr:hover td { background: var(--bg-pink-light); cursor: pointer; }
+
+/* --- Стили для ресайза и перетаскивания столбцов --- */
+.resizer {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    background: transparent;
+    z-index: 10;
+    border-right: 2px solid transparent;
+}
+.resizer:hover, .resizer:active {
+    border-right-color: var(--magenta);
+}
+th.dragging {
+    opacity: 0.4;
+}
+th.drag-over {
+    border-left: 2px solid var(--magenta);
+}
+/* --------------------------------------------------- */
 
 /* Заголовки таблиц */
 .th-content { display: flex; align-items: center; justify-content: space-between; }
@@ -38,7 +68,6 @@ tbody tr:hover td { background: var(--bg-pink-light); cursor: pointer; }
 }
 #refToolbar .button { height: 42px; }
 
-/* Popover */
 .filter-popover {
     position: fixed; background: var(--bg-milk);
     border: 1px solid var(--border-pink); border-radius: 12px;
@@ -80,17 +109,40 @@ tbody tr:hover td { background: var(--bg-pink-light); cursor: pointer; }
 .custom-modal.open { display: flex; }
 .custom-modal-content {
     background: var(--bg-milk); border-radius: 24px;
-    width: 100%; max-width: 500px; max-height: 90vh;
-    overflow-y: auto; padding: 32px;
+    width: 100%; max-width: 500px; max-height: 95vh; /* Увеличили max-height */
+    overflow-y: auto; padding: 24px 32px; /* Уменьшили отступы */
     border: 1px solid var(--border-pink);
     position: relative; box-shadow: 0 20px 40px rgba(92, 19, 59, 0.15);
+    text-align: center;
 }
 .custom-modal-close {
     position: absolute; top: 20px; right: 20px;
     cursor: pointer; background: transparent; border: none;
     font-size: 24px; color: var(--text-muted); z-index: 10;
 }
-.custom-modal h2 { margin-bottom: 24px; color: var(--text-dark); font-size: 20px; }
+.custom-modal h2 { margin-bottom: 12px; color: var(--text-dark); font-size: 20px; text-align: center; }
+.custom-modal p.muted { text-align: center; margin-bottom: 16px; }
+
+/* Выравнивание кнопок по центру */
+.modal-actions {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 20px;
+    border-top: 1px solid var(--border-pink);
+    padding-top: 16px;
+}
+
+/* Формы внутри модалок остаются слева */
+.custom-modal .form-group {
+    text-align: left;
+    margin-bottom: 10px;
+}
+
+/* Убираем скролл-бар для вебкита, если он вдруг появится */
+.custom-modal-content::-webkit-scrollbar { width: 6px; }
+.custom-modal-content::-webkit-scrollbar-track { background: transparent; }
+.custom-modal-content::-webkit-scrollbar-thumb { background: var(--border-pink); border-radius: 10px; }
 
 /* Страница документа */
 .doc-view-container {
@@ -237,9 +289,7 @@ tbody tr:hover td { background: var(--bg-pink-light); cursor: pointer; }
     border-color: var(--border-pink) !important;
     box-shadow: none !important;
 }
-/* ============================================================
-   Кнопки-иконки для таблиц справочников (всегда видимы)
-   ============================================================ */
+
 .icon-btn {
     display: inline-flex;
     align-items: center;
@@ -274,7 +324,6 @@ tbody tr:hover td { background: var(--bg-pink-light); cursor: pointer; }
     box-shadow: 0 4px 10px rgba(176, 0, 32, 0.25);
 }
 
-/* Sticky-колонка «Действия» — всегда на виду при горизонтальном скролле */
 th.actions-header,
 td.actions-cell {
     position: sticky;
@@ -295,4 +344,3 @@ th.actions-header {
 tbody tr:hover td.actions-cell {
     background: var(--bg-pink-light);
 }
-

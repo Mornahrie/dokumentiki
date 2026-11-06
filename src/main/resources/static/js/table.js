@@ -1,5 +1,8 @@
 var hideDrafts = false;
 
+var tableColumnOrders = {};
+var columnWidths = {};
+
 function toggleDraftsVisibility() {
     hideDrafts = document.getElementById('hideDraftsToggle').checked;
     applySearch();
@@ -14,7 +17,6 @@ function renderSidebar() {
     });
     html += '</div></div>';
 
-    // КАТЕГОРИИ — ДИНАМИЧЕСКИЕ (из БД)
     html += '<div class="nav-group"><button class="nav-group__title" onclick="toggleGroup(this)"><span>Категории документов</span><span>−</span></button><div class="nav-group__items">';
     if (!CATEGORIES || CATEGORIES.length === 0) {
         html += '<div class="muted" style="padding: 8px 16px; font-size: 12px;">Нет активных категорий</div>';
@@ -84,7 +86,6 @@ async function loadSection(section) {
     } else if (section.type === 'admin' && section.code === 'PERMISSIONS') {
         refToolbar.style.display = 'flex';
         taskStatusFilter.style.display = 'none';
-        // Переключатель режимов «Пользователи / Должности» отрисует loadPermissionManagement()
     } else if (section.type === 'task') {
         refToolbar.style.display = 'none';
         taskStatusFilter.style.display = 'block';
@@ -135,7 +136,23 @@ async function handleGlobalSearch(e) {
 
 function renderTable(containerId, data, columns, isClickable, extraActions) {
     var container = document.getElementById(containerId);
-    var visibleCols = columns.filter(function (c) { return columnVisibility[c.key] !== false; });
+    var sectionKey = currentSection ? (currentSection.type + ':' + currentSection.code) : 'default';
+
+    if (!tableColumnOrders[sectionKey]) {
+        tableColumnOrders[sectionKey] = columns.map(function(c) { return c.key; });
+    } else {
+        columns.forEach(function(c) {
+            if (tableColumnOrders[sectionKey].indexOf(c.key) === -1) {
+                tableColumnOrders[sectionKey].push(c.key);
+            }
+        });
+    }
+
+    var orderedCols = columns.slice().sort(function(a, b) {
+        return tableColumnOrders[sectionKey].indexOf(a.key) - tableColumnOrders[sectionKey].indexOf(b.key);
+    });
+
+    var visibleCols = orderedCols.filter(function (c) { return columnVisibility[c.key] !== false; });
 
     if (!data.length) {
         container.innerHTML = '<div class="muted" style="padding:32px;text-align:center;">Нет данных</div>';
@@ -147,7 +164,13 @@ function renderTable(containerId, data, columns, isClickable, extraActions) {
         var isSorted = sortConfig.key === col.key;
         var sortIcon = isSorted ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '⇅';
         var isFiltered = activeFilters[col.key] ? 'active' : '';
-        html += '<th data-key="' + col.key + '">' +
+
+        var widthStyle = '';
+        if (columnWidths[sectionKey] && columnWidths[sectionKey][col.key]) {
+            widthStyle = 'style="width: ' + columnWidths[sectionKey][col.key] + 'px; min-width: ' + columnWidths[sectionKey][col.key] + 'px;"';
+        }
+
+        html += '<th data-key="' + col.key + '" ' + widthStyle + '>' +
             '<div class="th-content">' +
                 '<div class="th-title" onclick="handleSort(\'' + col.key + '\')">' +
                     '<span>' + col.label + '</span>' +
@@ -166,7 +189,13 @@ function renderTable(containerId, data, columns, isClickable, extraActions) {
             var val = row;
             col.key.split('.').forEach(function (k) { if (val) val = val[k]; });
             if (col.fmt) val = col.fmt(val, row);
-            html += '<td>' + (val == null ? '—' : val) + '</td>';
+
+            var widthStyle = '';
+            if (columnWidths[sectionKey] && columnWidths[sectionKey][col.key]) {
+                widthStyle = 'style="width: ' + columnWidths[sectionKey][col.key] + 'px; min-width: ' + columnWidths[sectionKey][col.key] + 'px;"';
+            }
+
+            html += '<td ' + widthStyle + '>' + (val == null ? '—' : val) + '</td>';
         });
         if (extraActions) html += '<td class="actions-cell" onclick="event.stopPropagation()">' + extraActions(row) + '</td>';
         html += '</tr>';
@@ -174,6 +203,105 @@ function renderTable(containerId, data, columns, isClickable, extraActions) {
     html += '</tbody></table>';
     container.innerHTML = html;
     renderColumnToggles(columns);
+
+}
+
+function makeTableResizableAndReorderable(table) {
+    if (!table) return;
+    var sectionKey = currentSection ? (currentSection.type + ':' + currentSection.code) : 'default';
+    var ths = table.querySelectorAll('thead th');
+
+    ths.forEach(function(th, index) {
+        if (th.classList.contains('actions-header')) return;
+        var resizer = document.createElement('div');
+        resizer.classList.add('resizer');
+        th.appendChild(resizer);
+
+        resizer.addEventListener('mousedown', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            var startX = e.pageX;
+            var startWidth = th.offsetWidth;
+
+            function onMouseMove(ev) {
+                var newWidth = startWidth + (ev.pageX - startX);
+                if (newWidth > 50) { // Минимальная ширина
+                    th.style.width = newWidth + 'px';
+                    th.style.minWidth = newWidth + 'px';
+
+                    var trs = table.querySelectorAll('tbody tr');
+                    trs.forEach(function(tr) {
+                        if (tr.children[index]) {
+                            tr.children[index].style.width = newWidth + 'px';
+                            tr.children[index].style.minWidth = newWidth + 'px';
+                        }
+                    });
+                }
+            }
+
+            function onMouseUp() {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                if (!columnWidths[sectionKey]) columnWidths[sectionKey] = {};
+                var key = th.getAttribute('data-key');
+                if (key) {
+                    columnWidths[sectionKey][key] = th.offsetWidth;
+                }
+            }
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+
+        th.setAttribute('draggable', 'true');
+
+        th.addEventListener('dragstart', function(e) {
+            if (e.target.classList.contains('resizer') || e.target.classList.contains('filter-icon') || e.target.classList.contains('sort-icon')) {
+                e.preventDefault();
+                return;
+            }
+            var key = th.getAttribute('data-key');
+            e.dataTransfer.setData('text/plain', key);
+            e.dataTransfer.effectAllowed = 'move';
+            th.classList.add('dragging');
+        });
+
+        th.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+        });
+
+        th.addEventListener('dragenter', function(e) {
+            e.preventDefault();
+            th.classList.add('drag-over');
+        });
+
+        th.addEventListener('dragleave', function(e) {
+            th.classList.remove('drag-over');
+        });
+
+        th.addEventListener('drop', function(e) {
+            e.preventDefault();
+            th.classList.remove('drag-over');
+            var sourceKey = e.dataTransfer.getData('text/plain');
+            var targetKey = th.getAttribute('data-key');
+
+            if (sourceKey && targetKey && sourceKey !== targetKey && tableColumnOrders[sectionKey]) {
+                var arr = tableColumnOrders[sectionKey];
+                var srcIdx = arr.indexOf(sourceKey);
+                var tgtIdx = arr.indexOf(targetKey);
+                if (srcIdx > -1 && tgtIdx > -1) {
+                    arr.splice(srcIdx, 1);
+                    arr.splice(tgtIdx, 0, sourceKey);
+                    applySearch();
+                }
+            }
+        });
+
+        th.addEventListener('dragend', function(e) {
+            th.classList.remove('dragging');
+        });
+    });
 }
 
 function handleSort(key) {
@@ -202,7 +330,6 @@ function sortData(data) {
     });
 }
 
-// Карта для фильтров по статусам: ключ столбца → карта русских названий
 function getStatusMapFor(key) {
     if (key === 'status') return STATUS_MAP;
     if (key === 'routeStatus') return ROUTE_STATUS_MAP;
@@ -285,8 +412,6 @@ function applySearch() {
     else if (currentSection.type === 'doc') renderTable('tableContainer', filtered, ALL_DOC_COLUMNS, true, null);
     else if (currentSection.type === 'admin' && currentSection.code === 'REFERENCE') renderRefTable(filtered);
     else if (currentSection.type === 'admin' && currentSection.code === 'PERMISSIONS') {
-        // Режим «Пользователи»: рендерим список пользователей, если не открыты детали
-        // Режим «Должности»:   рендерим список должностей, если не открыты детали
         if (currentPermissionMode === 'positions') {
             if (!currentPositionId) renderPositionsTable(filtered);
         } else {

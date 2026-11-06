@@ -1,17 +1,5 @@
-// ============================================================
 // Управление справочниками и полномочиями (только для ADMIN).
-// Общие функции (token, escapeHtml, renderTable, applySearch,
-// showModal, submitFormModal, closeFormModal, STATUS_MAP,
-// ROUTE_STATUS_MAP, ...) — определены в core.js и table.js.
-//
-// doc_categories = КАТЕГОРИИ (родитель)
-// doc_types      = ТИПЫ (дочерние, привязаны к категории)
-// nomenclatures  = ДЕЛА (case), привязаны к категории + типу
-// ============================================================
-
-// ============================================================
 // ВЫБОР ТИПА СПРАВОЧНИКА
-// ============================================================
 function renderRefTypeSelector() {
     document.getElementById('refToolbar').innerHTML =
         '<select id="refTypeSelect" onchange="onRefTypeChange()">' +
@@ -37,12 +25,10 @@ async function loadReferenceManagement() {
         var resp = await fetch('/api/admin/' + currentRefType, { headers: { 'Authorization': 'Bearer ' + token } });
         currentData = await resp.json();
         applySearch();
-    } catch (e) { alert('Ошибка: ' + e.message); }
+    } catch (e) { showAlert('Ошибка', e.message); }
 }
 
-// ============================================================
 // ТАБЛИЦА СПРАВОЧНИКА
-// ============================================================
 function renderRefTable(data) {
     var configs = {
         'departments':    { cols: [{ key: 'code', label: 'Код' }, { key: 'name', label: 'Название' }, { key: 'isActive', label: 'Активно', fmt: function (v) { return v ? 'Да' : 'Нет'; } }], idKey: 'departmentId' },
@@ -85,9 +71,7 @@ function renderRefTable(data) {
     renderTable('tableContainer', data, cfg.cols, false, actions);
 }
 
-// ============================================================
 // УНИВЕРСАЛЬНАЯ МОДАЛКА
-// ============================================================
 var pendingFormSubmit = null;
 
 function showModal(title, fieldsHtml, onSubmit) {
@@ -110,9 +94,7 @@ function closeFormModal() {
     pendingFormSubmit = null;
 }
 
-// ============================================================
 // ФОРМА ДОБАВЛЕНИЯ / РЕДАКТИРОВАНИЯ СПРАВОЧНИКА
-// ============================================================
 async function openRefModal(id) {
     var isEdit = (id !== undefined && id !== null);
     var idMap = {
@@ -259,7 +241,7 @@ async function openRefModal(id) {
             }
             closeFormModal();
             await loadReferenceManagement();
-        } catch (e) { alert(e.message); }
+        } catch (e) { showAlert('Ошибка', e.message); }
     });
 }
 
@@ -292,63 +274,50 @@ async function onNomCategoryChange() {
     }
 }
 
-// ============================================================
 // УДАЛЕНИЕ СПРАВОЧНИКА
-// ============================================================
 function confirmDeleteRef(id, type) {
-    document.getElementById('confirmTitle').textContent = 'Удаление записи';
-    document.getElementById('confirmMessage').textContent =
-        'Вы уверены? Если у записи есть связанные данные — статус изменится на «Не активно». ' +
-        'Если связанных данных нет — запись будет удалена полностью.';
-    document.getElementById('btnConfirmAction').onclick = async function () {
-        try {
-            var res = await fetch('/api/admin/' + type + '/' + id, {
-                method: 'DELETE',
-                headers: { 'Authorization': 'Bearer ' + token }
-            });
-            var data = await res.json().catch(function () { return {}; });
-            document.getElementById('confirmModal').classList.remove('open');
-            if (!res.ok) {
-                alert(data.error || 'Ошибка удаления');
-                return;
-            }
-            if (data.message) alert(data.message);
-            await loadReferenceManagement();
-        } catch (e) { alert('Ошибка удаления: ' + e.message); }
-    };
-    document.getElementById('confirmModal').classList.add('open');
+    showConfirm(
+        'Удаление записи',
+        'Вы уверены? Если у записи есть связанные данные — статус изменится на «Не активно». Если связанных данных нет — запись будет удалена полностью.',
+        async function () {
+            try {
+                var res = await fetch('/api/admin/' + type + '/' + id, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                var data = await res.json().catch(function () { return {}; });
+                if (!res.ok) {
+                    showAlert('Ошибка', data.error || 'Ошибка удаления');
+                    return;
+                }
+                if (data.message) showAlert('Успех', data.message);
+                await loadReferenceManagement();
+            } catch (e) { showAlert('Ошибка', 'Ошибка удаления: ' + e.message); }
+        }
+    );
 }
 
-// ============================================================
 // УПРАВЛЕНИЕ ПОЛНОМОЧИЯМИ
-// ============================================================
 async function loadPermissionManagement() {
     currentPermissionUserId = null;
     currentPositionId = null;
     document.getElementById('tableSearch').style.display = 'block';
     document.getElementById('tableContainer').innerHTML = '<div style="padding:32px;text-align:center;">Загрузка...</div>';
 
-    // Переключатель режимов «Пользователи / Должности»
     var refToolbar = document.getElementById('refToolbar');
     refToolbar.style.display = 'flex';
     refToolbar.innerHTML =
         '<select id="permModeSelect" onchange="onPermModeChange()">' +
-            '<option value="users"' +
-                (currentPermissionMode === 'users' ? ' selected' : '') +
-                '>Пользователи</option>' +
-            '<option value="positions"' +
-                (currentPermissionMode === 'positions' ? ' selected' : '') +
-                '>Должности</option>' +
+            '<option value="users"' + (currentPermissionMode === 'users' ? ' selected' : '') + '>Пользователи</option>' +
+            '<option value="positions"' + (currentPermissionMode === 'positions' ? ' selected' : '') + '>Должности</option>' +
         '</select>';
 
     try {
-        var url = (currentPermissionMode === 'positions')
-            ? '/api/admin/positions'
-            : '/api/admin/users';
+        var url = (currentPermissionMode === 'positions') ? '/api/admin/positions' : '/api/admin/users';
         var resp = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
         currentData = await resp.json();
         applySearch();
-    } catch (e) { alert('Ошибка: ' + e.message); }
+    } catch (e) { showAlert('Ошибка', e.message); }
 }
 
 async function onPermModeChange() {
@@ -362,7 +331,6 @@ async function onPermModeChange() {
     await loadPermissionManagement();
 }
 
-// -------- СПИСОК ПОЛЬЗОВАТЕЛЕЙ --------
 function renderUsersTable(data) {
     var cols = [
         { key: 'fullName', label: 'ФИО', fmt: function (_, r) { return r.lastName + ' ' + r.firstName + ' ' + (r.middleName || ''); } },
@@ -375,7 +343,6 @@ function renderUsersTable(data) {
     renderTable('tableContainer', data, cols, false, actions);
 }
 
-// -------- СПИСОК ДОЛЖНОСТЕЙ --------
 function renderPositionsTable(data) {
     var cols = [
         { key: 'code', label: 'Код' },
@@ -388,7 +355,6 @@ function renderPositionsTable(data) {
     renderTable('tableContainer', data, cols, false, actions);
 }
 
-// -------- ПОЛНОМОЧИЯ ПОЛЬЗОВАТЕЛЯ --------
 async function openUserPermissions(userId) {
     currentPermissionUserId = userId;
     document.getElementById('tableSearch').style.display = 'none';
@@ -449,7 +415,6 @@ function renderUserPermissions(user, perms) {
     container.innerHTML = html;
 }
 
-// -------- ПОЛНОМОЧИЯ ДОЛЖНОСТИ --------
 async function openPositionPermissions(positionId) {
     currentPositionId = positionId;
     document.getElementById('tableSearch').style.display = 'none';
@@ -473,9 +438,8 @@ async function openPositionPermissions(positionId) {
 
 function renderPositionPermissions(position, perms) {
     var container = document.getElementById('tableContainer');
-    var title = position
-        ? (position.name || 'Должность') + (position.code ? ' (' + position.code + ')' : '')
-        : 'Должность';
+    // Убрали код должности в скобках
+    var title = position ? (position.name || 'Должность') : 'Должность';
     document.getElementById('docCount').textContent = perms.length + ' полномочий';
 
     var html = '<div style="display:flex; align-items:center; justify-content:space-between; background:var(--bg-pink-light); padding: 16px 24px; border-radius: 16px; margin-bottom: 24px; border: 1px solid var(--border-pink); flex-wrap: wrap; gap: 16px;">' +
@@ -512,7 +476,6 @@ function renderPositionPermissions(position, perms) {
     container.innerHTML = html;
 }
 
-// -------- ВЫДАЧА ПОЛЬЗОВАТЕЛЮ --------
 async function openGrantPermissionModal(userId) {
     try {
         var results = await Promise.all([
@@ -560,15 +523,14 @@ async function openGrantPermissionModal(userId) {
                 closeFormModal();
                 await openUserPermissions(userId);
             } catch (e) {
-                alert(e.message);
+                showAlert('Ошибка', e.message);
             }
         });
     } catch (e) {
-        alert('Ошибка загрузки справочников для модалки: ' + e.message);
+        showAlert('Ошибка', 'Ошибка загрузки справочников для модалки: ' + e.message);
     }
 }
 
-// -------- ВЫДАЧА ДОЛЖНОСТИ --------
 async function openGrantPositionPermissionModal(positionId) {
     try {
         var results = await Promise.all([
@@ -615,44 +577,42 @@ async function openGrantPositionPermissionModal(positionId) {
                 closeFormModal();
                 await openPositionPermissions(positionId);
             } catch (e) {
-                alert(e.message);
+                showAlert('Ошибка', e.message);
             }
         });
     } catch (e) {
-        alert('Ошибка загрузки справочников для модалки: ' + e.message);
+        showAlert('Ошибка', 'Ошибка загрузки справочников для модалки: ' + e.message);
     }
 }
 
-// -------- ОТЗЫВ ПОЛЬЗОВАТЕЛЮ --------
 function confirmRevokePermission(userId, permId) {
-    document.getElementById('confirmTitle').textContent = 'Отзыв полномочия';
-    document.getElementById('confirmMessage').textContent = 'Вы уверены, что хотите отозвать это полномочие у пользователя?';
-    document.getElementById('btnConfirmAction').onclick = async function () {
-        try {
-            await fetch('/api/admin/users/' + userId + '/permissions/' + permId, {
-                method: 'DELETE',
-                headers: { 'Authorization': 'Bearer ' + token }
-            });
-            document.getElementById('confirmModal').classList.remove('open');
-            await openUserPermissions(userId);
-        } catch (e) { alert('Ошибка удаления'); }
-    };
-    document.getElementById('confirmModal').classList.add('open');
+    showConfirm(
+        'Отзыв полномочия',
+        'Вы уверены, что хотите отозвать это полномочие у пользователя?',
+        async function () {
+            try {
+                await fetch('/api/admin/users/' + userId + '/permissions/' + permId, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                await openUserPermissions(userId);
+            } catch (e) { showAlert('Ошибка', 'Ошибка удаления'); }
+        }
+    );
 }
 
-// -------- ОТЗЫВ ДОЛЖНОСТИ --------
 function confirmRevokePositionPermission(positionId, permId) {
-    document.getElementById('confirmTitle').textContent = 'Отзыв полномочия';
-    document.getElementById('confirmMessage').textContent = 'Вы уверены, что хотите отозвать это полномочие у должности?';
-    document.getElementById('btnConfirmAction').onclick = async function () {
-        try {
-            await fetch('/api/admin/positions/' + positionId + '/permissions/' + permId, {
-                method: 'DELETE',
-                headers: { 'Authorization': 'Bearer ' + token }
-            });
-            document.getElementById('confirmModal').classList.remove('open');
-            await openPositionPermissions(positionId);
-        } catch (e) { alert('Ошибка удаления'); }
-    };
-    document.getElementById('confirmModal').classList.add('open');
+    showConfirm(
+        'Отзыв полномочия',
+        'Вы уверены, что хотите отозвать это полномочие у должности?',
+        async function () {
+            try {
+                await fetch('/api/admin/positions/' + positionId + '/permissions/' + permId, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                await openPositionPermissions(positionId);
+            } catch (e) { showAlert('Ошибка', 'Ошибка удаления'); }
+        }
+    );
 }

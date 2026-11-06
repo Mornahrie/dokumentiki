@@ -16,7 +16,6 @@ public interface DocRouteRepository extends JpaRepository<DocRoute, Long> {
     List<DocRoute> findByDocumentDocumentIdOrderByStepNumberAsc(Long documentId);
     List<DocRoute> findByDocumentDocumentIdOrderByCreatedAtAsc(Long documentId);
 
-    /** Для аналитики: маршруты сразу по набору документов — один запрос, без N+1. */
     List<DocRoute> findByDocumentDocumentIdIn(Collection<Long> documentIds);
 
     List<DocRoute> findByAssignedUserUserIdAndStatus(Long userId, String status);

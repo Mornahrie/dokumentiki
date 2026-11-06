@@ -17,8 +17,6 @@ public class BaseRole {
     @Column(name = "name", nullable = false, length = 100)
     private String name;
 
-    // --- Геттеры и сеттеры ---
-
     public Long getBaseRoleId() {
         return baseRoleId;
     }

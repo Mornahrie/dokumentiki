@@ -2,13 +2,10 @@
 <html xmlns:th="http://www.thymeleaf.org">
 <body>
 <div th:fragment="documentView" id="documentView" style="display: none;">
-  <div class="page-heading" style="margin-bottom: 24px;">
+  <div class="page-heading" style="margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between;">
     <div style="display: flex; align-items: center; gap: 16px;">
       <button class="button button--secondary" onclick="closeDocumentView()">← Назад</button>
-      <div>
-        <p class="breadcrumb">Раздел / <span>Просмотр документа</span></p>
-        <h1 id="docViewTitle" style="margin: 0; font-size: 24px;">—</h1>
-      </div>
+      <h1 id="docViewTitle" style="margin: 0; font-size: 24px;">—</h1>
     </div>
     <div style="display: flex; gap: 12px;">
       <button class="button button--primary" id="btnCreateRoute" onclick="openRouteModalForExisting(currentDocId)" style="display: none;">Направить по маршруту</button>
@@ -29,8 +26,6 @@
     <!-- Вкладка 1: Документ -->
     <div id="tab-doc" class="tab-content">
       <div class="two-col-layout">
-
-        <!-- ЛЕВАЯ КОЛОНКА: Основная информация -->
         <div class="col">
           <div class="section-card">
             <h3>Основная информация</h3>
@@ -57,15 +52,11 @@
           </div>
         </div>
 
-        <!-- ПРАВАЯ КОЛОНКА: Файлы и реквизиты -->
         <div class="col">
-          <!-- Файлы -->
           <div class="section-card">
             <h3>Файлы</h3>
             <div id="mv_files" class="muted">Файлы отсутствуют</div>
           </div>
-
-          <!-- Служебные реквизиты -->
           <div class="section-card">
             <h3>Реквизиты документа</h3>
             <div class="form-group">
@@ -86,7 +77,6 @@
             </div>
           </div>
         </div>
-
       </div>
     </div>
 
@@ -100,7 +90,7 @@
       </div>
     </div>
 
-    <!-- Вкладка 3: История (ТАБЛИЦА) -->
+    <!-- Вкладка 3: История -->
     <div id="tab-history" class="tab-content">
       <div style="display:flex; justify-content:flex-end; margin-bottom:16px;">
         <button class="button button--secondary" onclick="printHistory()">🖨 Печать истории</button>
@@ -109,7 +99,6 @@
         <table>
           <thead>
           <tr>
-            <!-- Увеличена ширина колонок, чтобы дата ДД.ММ.ГГГГ помещалась полностью -->
             <th style="width: 140px;">Дата</th>
             <th style="width: 100px;">Время</th>
             <th>ФИО</th>

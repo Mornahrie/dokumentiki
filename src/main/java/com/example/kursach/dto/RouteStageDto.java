@@ -4,7 +4,7 @@ public class RouteStageDto {
     private String stageCode;
     private String actionCode;
     private Long assigneeId;
-    private String deadline;   // ISO-8601
+    private String deadline;
 
     public String getStageCode() { return stageCode; }
     public void setStageCode(String stageCode) { this.stageCode = stageCode; }

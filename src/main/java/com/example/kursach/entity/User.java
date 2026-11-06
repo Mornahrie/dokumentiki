@@ -33,10 +33,6 @@ public class User {
     @JoinColumn(name = "department_id", nullable = false)
     private Department department;
 
-    /**
-     * По SQL есть составной FK (sector_id, department_id) -> sectors(sector_id, department_id).
-     * В JPA оставлена простая связь по sector_id; соответствие department_id проверяйте в сервисе/БД.
-     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "sector_id")
     private Sector sector;
@@ -60,10 +56,6 @@ public class User {
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
-
-    // ------------------------------------------------------------------
-    // getters / setters
-    // ------------------------------------------------------------------
 
     public Long getUserId() {
         return userId;

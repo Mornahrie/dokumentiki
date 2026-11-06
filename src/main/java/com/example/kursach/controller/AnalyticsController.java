@@ -194,19 +194,16 @@ public class AnalyticsController {
         String name = user.getPosition().getName() == null ? "" : user.getPosition().getName().toLowerCase();
         String code = user.getPosition().getCode() == null ? "" : user.getPosition().getCode().toLowerCase();
 
-        // Если это заместитель, то он не считается руководителем (видит только свои задачи)
         if (name.contains("заместитель") || name.contains("зам.")) {
             return false;
         }
 
-        // Проверка английских кодов
         boolean codeMatch = code.contains("head")
                 || code.contains("chief")
                 || code.contains("director")
                 || code.contains("manager")
                 || code.contains("lead");
 
-        // Проверка русских названий
         boolean nameMatch = name.contains("начальник")
                 || name.contains("директор")
                 || name.contains("руководитель")

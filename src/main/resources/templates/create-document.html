@@ -1,258 +1,117 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
-<head>
-    <meta charset="UTF-8">
-    <title>Создание документа</title>
-    <!-- Подключаем оба файла стилей: styles.css для базы и main.css для модалок и таблиц -->
-    <link rel="stylesheet" th:href="@{/css/styles.css}">
-    <link rel="stylesheet" th:href="@{/css/main.css}">
-    <style>
-        .topbar { border-bottom: none; background: var(--bg-milk);
-            box-shadow: 0 6px 24px rgba(217, 17, 105, 0.07); padding: 0 32px; height: 80px; }
-        .topbar-left { display: flex; align-items: center; gap: 20px; }
-        .topbar-left h2 { margin: 0; font-size: 20px; font-weight: 700; color: var(--text-dark); }
-        .topbar-right { display: flex; gap: 12px; }
-        .section-card { background: var(--bg-milk); border: 1px solid var(--border-pink);
-            border-radius: 16px; padding: 24px; box-shadow: 0 4px 15px rgba(217, 17, 105, 0.05); }
-        .section-card h3 { margin: 0 0 20px 0; font-size: 18px; color: var(--text-dark);
-            padding-bottom: 12px; border-bottom: 1px solid var(--border-pink); }
-        .form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
-        .form-group:last-child { margin-bottom: 0; }
-        .form-group label { font-weight: 600; color: var(--text-muted); font-size: 13px; }
-        .form-group input, .form-group select, .form-group textarea {
-            width: 100%; padding: 10px 16px; border: 1px solid var(--border-pink);
-            border-radius: 8px; font-size: 14px; background: var(--bg-pink-light);
-            color: var(--text-dark); outline: none; font-family: inherit; transition: 0.2s;
-        }
-        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
-            border-color: var(--magenta); background: var(--bg-milk);
-            box-shadow: 0 0 0 3px rgba(217, 17, 105, 0.15);
-        }
-        .form-group input:disabled, .form-group select:disabled {
-            opacity: 0.6; cursor: not-allowed;
-        }
-        .file-row { display: flex; justify-content: space-between; align-items: center;
-            padding: 8px 12px; border: 1px solid var(--border-pink);
-            border-radius: 8px; margin-bottom: 8px; background: var(--bg-pink-light); }
-        .page-wrap { max-width: 1280px; margin: 0 auto; padding: 32px; }
-        .two-col-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            gap: 24px; align-items: start; }
-        .two-col-layout .col { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
-        @media (max-width: 900px) { .two-col-layout { grid-template-columns: 1fr; } }
-
-        .error-banner { background: #ffe4e6; color: #be123c; border: 1px solid #fda4af;
-            padding: 12px 16px; border-radius: 8px; margin-bottom: 16px;
-            font-weight: 600; font-size: 14px; display: none; }
-    </style>
-</head>
 <body>
-
-<header class="topbar">
-    <div class="topbar-left">
-        <div class="brand"><div class="brand-mark">Д</div></div>
-        <button class="button button--secondary" onclick="goBack()">← Назад</button>
-        <h2>Создание документа</h2>
+<div th:fragment="documentView" id="documentView" style="display: none;">
+    <div class="page-heading" style="margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <button class="button button--secondary" onclick="closeDocumentView()">← Назад</button>
+        </div>
+        <div style="display: flex; gap: 12px;">
+            <button class="button button--primary" id="btnCreateRoute" onclick="openRouteModalForExisting(currentDocId)" style="display: none;">Направить по маршруту</button>
+            <button class="button button--secondary" id="btnAddFileVersion" onclick="addFileVersion()" style="display: none;">+ Новая версия файла</button>
+            <button class="button button--primary" id="btnRegisterDoc" onclick="registerDocument()" style="display: none;">Зарегистрировать</button>
+            <button class="button button--secondary" id="btnEditDoc" onclick="enableEditMode()" style="display: none;">Редактировать</button>
+            <button class="button button--primary" id="btnSaveDoc" onclick="saveDocChanges()" style="display: none;">Сохранить</button>
+        </div>
     </div>
-    <div class="topbar-right">
-        <button class="button button--secondary" onclick="saveDraft()">Сохранить как черновик</button>
-        <button class="button button--primary" onclick="openRouteModalForNew()">Сохранить и отправить</button>
-    </div>
-</header>
 
-<main class="page-wrap">
-    <div class="error-banner" id="errorBanner"></div>
+    <div class="doc-view-container">
+        <div class="doc-tabs">
+            <button class="doc-tab-btn" id="btnTabDoc" onclick="switchDocTab('doc')">Документ</button>
+            <button class="doc-tab-btn" id="btnTabRoute" onclick="switchDocTab('route')">Ветка задач</button>
+            <button class="doc-tab-btn" id="btnTabHistory" onclick="switchDocTab('history')">История</button>
+        </div>
 
-    <div class="two-col-layout">
-        <div class="col">
-            <div class="section-card">
-                <h3>Основная информация</h3>
-                <div class="form-group">
-                    <label>Название документа (формируется автоматически)</label>
-                    <input type="text" id="title" readonly placeholder="Заполнится после выбора категории и типа..." style="background: #f8f8f8;">
+        <!-- Вкладка 1: Документ -->
+        <div id="tab-doc" class="tab-content">
+            <div class="two-col-layout">
+                <div class="col">
+                    <div class="section-card">
+                        <h3>Основная информация</h3>
+                        <div class="form-group">
+                            <label>Название документа</label>
+                            <input type="text" id="mv_title" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label>Содержание</label>
+                            <textarea id="mv_content" rows="8" disabled></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Тип документа</label>
+                            <input type="text" id="mv_type" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label>Категория</label>
+                            <input type="text" id="mv_category" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label>Автор</label>
+                            <input type="text" id="mv_author" disabled>
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Содержание</label>
-                    <textarea id="content" rows="6" placeholder="Краткое содержание или текст документа..."></textarea>
-                </div>
 
-                <div class="form-group">
-                    <label>Категория *</label>
-                    <select id="categoryId" onchange="onCategoryChange()">
-                        <option value="">Загрузка...</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label>Тип документа *</label>
-                    <select id="typeId" disabled onchange="onTypeChange()">
-                        <option value="">Сначала выберите категорию</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label>Номенклатура дел *</label>
-                    <select id="nomenclatureId" disabled>
-                        <option value="">Сначала выберите тип</option>
-                    </select>
+                <div class="col">
+                    <div class="section-card">
+                        <h3>Файлы</h3>
+                        <div id="mv_files" class="muted">Файлы отсутствуют</div>
+                    </div>
+                    <div class="section-card">
+                        <h3>Реквизиты документа</h3>
+                        <div class="form-group">
+                            <label>Номенклатура дел</label>
+                            <input type="text" id="mv_nomenclature" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label>Рег. номер</label>
+                            <input type="text" id="mv_reg" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label>Статус</label>
+                            <input type="text" id="mv_status" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label>Дата создания</label>
+                            <input type="text" id="mv_created" disabled>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="col">
-            <div class="section-card">
-                <h3>Файлы</h3>
-                <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px;">
-                    <input type="file" id="fileInput" multiple style="display:none" onchange="onFilesSelected(event)">
-                    <button class="button button--secondary" type="button"
-                            onclick="document.getElementById('fileInput').click()">+ Прикрепить файлы</button>
-                </div>
-                <div id="filesList" class="muted">Файлы не добавлены</div>
+        <!-- Вкладка 2: Ветка задач -->
+        <div id="tab-route" class="tab-content">
+            <div style="display:flex; justify-content:flex-end; margin-bottom:16px;">
+                <button class="button button--secondary" onclick="printRoute()">🖨 Печать маршрута</button>
+            </div>
+            <div class="timeline-stepper" id="routeTimeline">
+                <div class="muted" style="text-align:center;">Загрузка...</div>
+            </div>
+        </div>
+
+        <!-- Вкладка 3: История -->
+        <div id="tab-history" class="tab-content">
+            <div style="display:flex; justify-content:flex-end; margin-bottom:16px;">
+                <button class="button button--secondary" onclick="printHistory()">🖨 Печать истории</button>
+            </div>
+            <div class="table-shell" id="historyTableContainer">
+                <table>
+                    <thead>
+                    <tr>
+                        <th style="width: 140px;">Дата</th>
+                        <th style="width: 100px;">Время</th>
+                        <th>ФИО</th>
+                        <th>Действие</th>
+                        <th>Комментарий</th>
+                    </tr>
+                    </thead>
+                    <tbody id="historyTableBody">
+                    <tr><td colspan="5" class="muted" style="text-align:center;">Загрузка...</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
-</main>
-
-<!-- Подключаем модальные окна из фрагментов -->
-<div th:replace="~{fragments/modals :: modals}"></div>
-
-<!-- Скрипты -->
-<script th:src="@{/js/core.js}"></script>
-<script th:src="@{/js/documents.js}"></script>
-
-<script>
-    // Дополнительная инициализация для страницы создания
-    document.addEventListener('DOMContentLoaded', async function() {
-        const loaded = await loadRouteReferences();
-        if (loaded) populateCategories();
-    });
-
-    function populateCategories() {
-        const sel = document.getElementById('categoryId');
-        if (!allCategories.length) {
-            sel.innerHTML = '<option value="">Нет категорий</option>';
-            return;
-        }
-        sel.innerHTML = '<option value="">Выберите категорию</option>' +
-            allCategories.map(c => `<option value="${c.categoryId}">${escapeHtml(c.name)}</option>`).join('');
-    }
-
-    function onCategoryChange() {
-        const catId = parseInt(document.getElementById('categoryId').value);
-        const typeSelect = document.getElementById('typeId');
-        const nomSelect  = document.getElementById('nomenclatureId');
-
-        typeSelect.innerHTML = '<option value="">Сначала выберите категорию</option>';
-        typeSelect.disabled = true;
-        nomSelect.innerHTML = '<option value="">Сначала выберите тип</option>';
-        nomSelect.disabled = true;
-
-        if (!catId) return;
-
-        const filtered = allDocTypes.filter(t => t.category && t.category.categoryId === catId);
-
-        if (!filtered.length) {
-            typeSelect.innerHTML = '<option value="">Нет типов для этой категории</option>';
-            return;
-        }
-        typeSelect.innerHTML = '<option value="">Выберите тип</option>' +
-            filtered.map(t => `<option value="${t.documentTypeId}">${escapeHtml(t.name)}</option>`).join('');
-        typeSelect.disabled = false;
-        updateTitlePreview();
-    }
-
-    function onTypeChange() {
-        const typeId = parseInt(document.getElementById('typeId').value);
-        const catId  = parseInt(document.getElementById('categoryId').value);
-        const nomSelect = document.getElementById('nomenclatureId');
-
-        nomSelect.innerHTML = '<option value="">Сначала выберите тип</option>';
-        nomSelect.disabled = true;
-
-        if (!typeId || !catId) return;
-
-        const filtered = allNomenclatures.filter(function (n) {
-            if (n.category && n.category.categoryId !== catId) return false;
-            if (n.type && n.type.documentTypeId !== typeId) return false;
-            return true;
-        });
-
-        if (!filtered.length) {
-            nomSelect.innerHTML = '<option value="">Нет подходящих номенклатур</option>';
-            return;
-        }
-        nomSelect.innerHTML = '<option value="">Выберите номенклатуру</option>' +
-            filtered.map(n => `<option value="${n.nomenclatureId}">${escapeHtml(n.caseCode)} — ${escapeHtml(n.title)}</option>`).join('');
-        nomSelect.disabled = false;
-        updateTitlePreview();
-    }
-
-    function updateTitlePreview() {
-        const catId = parseInt(document.getElementById('categoryId').value);
-        const typeId = parseInt(document.getElementById('typeId').value);
-        const titleInput = document.getElementById('title');
-        const currentUser = allUsers.find(u => u.userId === currentUserId);
-
-        if (!catId || !typeId || !currentUser) {
-            titleInput.value = '';
-            return;
-        }
-
-        const cat = allCategories.find(c => c.categoryId === catId);
-        const type = allDocTypes.find(t => t.documentTypeId === typeId);
-
-        if (cat && type) {
-            const initial = currentUser.firstName ? currentUser.firstName.charAt(0) + '.' : '';
-            const middle = currentUser.middleName ? ' ' + currentUser.middleName.charAt(0) + '.' : '';
-            titleInput.value = `${cat.name} ${type.name} от ${currentUser.lastName} ${initial}${middle}`.trim();
-        }
-    }
-
-    let selectedFiles = [];
-    function onFilesSelected(event) {
-        const files = Array.from(event.target.files || []);
-        files.forEach(f => {
-            selectedFiles.push({ file: f, fileName: f.name, fileSize: f.size });
-        });
-        renderFiles();
-        event.target.value = '';
-    }
-
-    function renderFiles() {
-        const container = document.getElementById('filesList');
-        if (!selectedFiles.length) {
-            container.innerHTML = '<div class="muted">Файлы не добавлены</div>';
-            return;
-        }
-        container.innerHTML = selectedFiles.map((f, i) => `
-            <div class="file-row">
-                <span>📄 ${escapeHtml(f.fileName)}</span>
-                <button class="action-link" style="color:#b00020;" onclick="removeFile(${i})">Удалить</button>
-            </div>
-        `).join('');
-    }
-
-    function removeFile(idx) { selectedFiles.splice(idx, 1); renderFiles(); }
-
-    function showError(msg) {
-        const b = document.getElementById('errorBanner');
-        b.textContent = msg; b.style.display = 'block';
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-    function clearError() { document.getElementById('errorBanner').style.display = 'none'; }
-
-    async function saveDraft() {
-        clearError();
-        try {
-            const doc = await createDocument();
-            await uploadFiles(doc.documentId);
-            alert('Документ сохранён как черновик');
-            window.location.href = '/main';
-        } catch (e) {
-            showError(e.message);
-        }
-    }
-
-    function goBack() { window.location.href = '/main'; }
-</script>
+</div>
 </body>
 </html>

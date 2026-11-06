@@ -29,13 +29,11 @@ public class DataInitializer implements CommandLineRunner {
         if (!userRepository.existsByTabNumber("admin")) {
             User admin = new User();
             admin.setTabNumber("admin");
-            // Хэш для пароля "admin"
             admin.setPasswordHash(new BCryptPasswordEncoder().encode("admin"));
             admin.setFirstName("Администратор");
             admin.setLastName("Системный");
             admin.setMiddleName("");
 
-            // Ищем или создаем базовые сущности для привязки
             Department dept = departmentRepository.findByCode("ADMIN_DEPT")
                     .orElseGet(() -> {
                         Department d = new Department();

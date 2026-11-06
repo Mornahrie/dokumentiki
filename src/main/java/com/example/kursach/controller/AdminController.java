@@ -80,7 +80,6 @@ public class AdminController {
         this.docFileRepository = docFileRepository;
     }
 
-    // ================= USERS =================
     @GetMapping("/users")
     public ResponseEntity<?> getAllUsers() {
         return ResponseEntity.ok(userRepository.findAllByOrderByLastNameAscFirstNameAsc());
@@ -156,7 +155,6 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Пользователь удалён полностью"));
     }
 
-    // ================= USER PERMISSIONS =================
     @GetMapping("/users/{id}/permissions")
     @Transactional(readOnly = true)
     public ResponseEntity<?> getUserPermissions(@PathVariable Long id) {
@@ -242,7 +240,6 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Полномочие отозвано"));
     }
 
-    // ================= POSITION PERMISSIONS =================
     @GetMapping("/positions/{id}/permissions")
     @Transactional(readOnly = true)
     public ResponseEntity<?> getPositionPermissions(@PathVariable Long id) {
@@ -320,7 +317,6 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Полномочие отозвано"));
     }
 
-    // ================= SIMPLE LISTS =================
     @GetMapping("/permissions")    public ResponseEntity<?> getAllPermissions() { return ResponseEntity.ok(permissionRepository.findAll()); }
     @GetMapping("/positions")      public ResponseEntity<?> getPositions()      { return ResponseEntity.ok(positionRepository.findAll()); }
     @GetMapping("/base-roles")     public ResponseEntity<?> getBaseRoles()      { return ResponseEntity.ok(baseRoleRepository.findAll()); }
@@ -402,7 +398,6 @@ public class AdminController {
         return ResponseEntity.ok(result);
     }
 
-    // ================= DEPARTMENTS CRUD =================
     @PostMapping("/departments")
     public ResponseEntity<?> createDepartment(@RequestBody Map<String, Object> b) {
         Department d = new Department();
@@ -438,7 +433,6 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Подразделение удалено полностью"));
     }
 
-    // ================= SECTORS CRUD =================
     @PostMapping("/sectors")
     public ResponseEntity<?> createSector(@RequestBody Map<String, Object> b) {
         Sector s = new Sector();
@@ -475,7 +469,6 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Сектор удалён полностью"));
     }
 
-    // ================= NOMENCLATURES CRUD =================
     @PostMapping("/nomenclatures")
     @Transactional
     public ResponseEntity<?> createNomenclature(@RequestBody Map<String, Object> b) {
@@ -590,7 +583,6 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Номенклатура удалена полностью"));
     }
 
-    // ================= DOC CATEGORIES CRUD (родитель) =================
     @PostMapping("/doc-categories")
     public ResponseEntity<?> createDocCategory(@RequestBody Map<String, Object> b) {
         DocCategory c = new DocCategory();
@@ -625,7 +617,6 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Категория удалена полностью"));
     }
 
-    // ================= DOC TYPES CRUD (дочерний) =================
     @PostMapping("/doc-types")
     public ResponseEntity<?> createDocType(@RequestBody Map<String, Object> b) {
         if (b.get("categoryId") == null) {
@@ -665,7 +656,6 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Тип документа удалён полностью"));
     }
 
-    // ================= DOC ACTIONS =================
     @PostMapping("/doc-actions")
     public ResponseEntity<?> createDocAction(@RequestBody Map<String, Object> b) {
         DocAction a = new DocAction();
@@ -698,7 +688,6 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Действие удалено полностью"));
     }
 
-    // ================= ROUTE STAGES =================
     @PostMapping("/route-stages")
     public ResponseEntity<?> createRouteStage(@RequestBody Map<String, Object> b) {
         RouteStage s = new RouteStage();
@@ -728,7 +717,6 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Этап удалён полностью"));
     }
 
-    // ================= BASE ROLES =================
     @PostMapping("/base-roles")
     public ResponseEntity<?> createBaseRole(@RequestBody Map<String, Object> b) {
         BaseRole r = new BaseRole();
@@ -756,7 +744,6 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Роль удалена полностью"));
     }
 
-    // ================= POSITIONS =================
     @PostMapping("/positions")
     public ResponseEntity<?> createPosition(@RequestBody Map<String, Object> b) {
         Position p = new Position();
@@ -786,7 +773,6 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Должность удалена полностью"));
     }
 
-    // ================= PERMISSIONS =================
     @PostMapping("/permissions/create")
     public ResponseEntity<?> createPermission(@RequestBody Map<String, Object> b) {
         Permission p = new Permission();
@@ -818,7 +804,6 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Полномочие удалено полностью"));
     }
 
-    // ================= HELPERS =================
     private static Long asLong(Object o) {
         if (o == null) return null;
         if (o instanceof Number n) return n.longValue();

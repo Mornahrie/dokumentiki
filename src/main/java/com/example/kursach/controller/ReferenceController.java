@@ -66,14 +66,14 @@ public class ReferenceController {
     @GetMapping("/base-roles")
     public ResponseEntity<?> baseRoles()     { return ResponseEntity.ok(baseRoleRepository.findAll()); }
 
-    // ===== КАТЕГОРИИ (родитель) =====
+    // КАТЕГОРИИ
     @GetMapping("/doc-categories")
     @Transactional(readOnly = true)
     public ResponseEntity<?> docCategories() {
         return ResponseEntity.ok(docCategoryRepository.findByIsActiveTrue());
     }
 
-    // ===== ТИПЫ (дочерние, с категорией) =====
+    // ТИПЫ
     @GetMapping("/doc-types")
     @Transactional(readOnly = true)
     public ResponseEntity<?> docTypes() {
@@ -95,7 +95,7 @@ public class ReferenceController {
         return ResponseEntity.ok(result);
     }
 
-    // ===== НОМЕНКЛАТУРЫ (возвращаем ДЕЛА с вложенной шапкой) =====
+    // НОМЕНКЛАТУРЫ
     @GetMapping("/nomenclatures")
     @Transactional(readOnly = true)
     public ResponseEntity<?> nomenclatures() {

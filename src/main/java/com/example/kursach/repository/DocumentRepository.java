@@ -16,7 +16,6 @@ import java.util.Optional;
 @Repository
 public interface DocumentRepository extends JpaRepository<Document, Long> {
 
-    // === простые derived queries (все поля Document существуют) ===
     List<Document> findByAuthorUserId(Long authorId);
     List<Document> findByCategoryCategoryId(Long categoryId);
     List<Document> findByDocumentTypeDocumentTypeId(Long documentTypeId);
@@ -37,7 +36,6 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
     long countByCategoryCategoryId(Long categoryId);
     long countByStatus(String status);
 
-    // === "Мои документы" по коду КАТЕГОРИИ (родитель) ===
     @Query("SELECT DISTINCT d FROM Document d " +
             "WHERE d.category.code = :categoryCode " +
             "AND (d.author.userId = :userId OR d.department.departmentId = :deptId) " +
@@ -46,7 +44,7 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
                                             @Param("deptId") Long deptId,
                                             @Param("categoryCode") String categoryCode);
 
-    // === Глобальный поиск ===
+    // Глобальный поиск
     @Query("SELECT d FROM Document d " +
             "WHERE (LOWER(d.title) LIKE LOWER(CONCAT('%', :q, '%')) " +
             "   OR LOWER(d.content) LIKE LOWER(CONCAT('%', :q, '%'))) " +
@@ -59,7 +57,7 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
                                     @Param("deptId") Long deptId,
                                     Pageable pageable);
 
-    // === Регистрация: подсчёт по делу (caseId) ===
+    // Регистрация: подсчёт caseId
     @Query("SELECT COUNT(d) FROM Document d " +
             "WHERE d.department.departmentId = :deptId " +
             "AND d.nomenclature.caseId = :caseId " +
@@ -67,7 +65,6 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
     long countRegistrationsByDeptAndCase(@Param("deptId") Long deptId,
                                          @Param("caseId") Long caseId);
 
-    // === Регистрация: старая версия с годом — через registrationDate ===
     @Query("SELECT COUNT(d) FROM Document d " +
             "WHERE d.department.departmentId = :deptId " +
             "AND d.nomenclature.caseId = :caseId " +
@@ -84,7 +81,7 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
     Optional<LocalDate> findLastRegistrationDate(@Param("deptId") Long deptId,
                                                  @Param("caseId") Long caseId);
 
-    // === Документы, где я участник маршрута (для аналитики) ===
+    // Документы, где user участник маршрута
     @Query("SELECT DISTINCT d FROM Document d " +
             "JOIN DocRoute r ON r.document = d " +
             "WHERE r.assignedUser.userId = :userId " +

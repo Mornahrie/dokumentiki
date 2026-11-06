@@ -11,7 +11,6 @@ import org.slf4j.LoggerFactory;
 import java.util.Date;
 
 public class JwtUtil {
-    // Добавляем логгер
     private static final Logger logger = LoggerFactory.getLogger(JwtUtil.class);
 
     private static final String SECRET = "kursach_secret_key_2024_super_long";

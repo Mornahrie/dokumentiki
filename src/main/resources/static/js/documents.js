@@ -1,7 +1,5 @@
-// ============================================================
 // Действия с документами: список, карточка, регистрация (модалка),
 // действия (в т.ч. REVIEW → EXECUTE), файлы, история (таблица), печать.
-// ============================================================
 
 var ACTIONS_MAP = {
     'CREATE':   'Создание документа',
@@ -71,15 +69,14 @@ async function loadRouteReferences() {
 
         return true;
     } catch (e) {
-        alert('Ошибка загрузки справочников: ' + e.message);
+        showAlert('Ошибка', 'Ошибка загрузки справочников: ' + e.message);
         return false;
     }
 }
 
 function populateRouteModalSelects() {
-    // Убрали вывод табельного номера, оставили только ФИО
     const options = allUsers.map(u =>
-        `<option value="${u.userId}">${escapeHtml(u.lastName)} ${escapeHtml(u.firstName)} ${escapeHtml(u.middleName || '')}</option>`
+        `<option value="${u.userId}">${escapeHtml(u.lastName)} ${escapeHtml(u.firstName)} ${escapeHtml(u.middleName || '')} (${escapeHtml(u.tabNumber)})</option>`
     ).join('');
 
     ['assigneeApproval', 'assigneeSign', 'assigneeRegister', 'assigneeReview'].forEach(id => {
@@ -123,9 +120,9 @@ function togglePaperFlow() {
 }
 
 async function openRouteModalForNew() {
-    if (!document.getElementById('categoryId').value) { showError('Выберите категорию'); return; }
-    if (!document.getElementById('typeId').value)     { showError('Выберите тип документа'); return; }
-    if (!document.getElementById('nomenclatureId').value) { showError('Выберите номенклатуру дел'); return; }
+    if (!document.getElementById('categoryId').value) { showAlert('Внимание', 'Выберите категорию'); return; }
+    if (!document.getElementById('typeId').value)     { showAlert('Внимание', 'Выберите тип документа'); return; }
+    if (!document.getElementById('nomenclatureId').value) { showAlert('Внимание', 'Выберите номенклатуру дел'); return; }
 
     const loaded = await loadRouteReferences();
     if (!loaded) return;
@@ -230,7 +227,7 @@ async function submitRoute() {
                 approvalStage.code, signStage.code, approveAction.code, signAction.code
             );
             closeRouteModal();
-            alert('Маршрут отправлен!');
+            showAlert('Успех', 'Маршрут отправлен!');
             openDocumentView(currentRouteDocId);
         } else {
             const doc = await createDocument();
@@ -240,7 +237,7 @@ async function submitRoute() {
                 approvalStage.code, signStage.code, approveAction.code, signAction.code
             );
             closeRouteModal();
-            alert('Документ создан и отправлен по маршруту.');
+            showAlert('Успех', 'Документ создан и отправлен по маршруту.');
             window.location.href = '/main';
         }
     } catch (e) {
@@ -248,7 +245,7 @@ async function submitRoute() {
             modalError.textContent = e.message;
             modalError.style.display = 'block';
         } else {
-            alert(e.message);
+            showAlert('Ошибка', e.message);
         }
     }
 }
@@ -417,7 +414,6 @@ async function openDocumentView(id) {
         currentDocAuthor = doc.author ? (doc.author.lastName + ' ' + (doc.author.firstName ? doc.author.firstName.charAt(0) : '') + '.' +
             (doc.author.middleName ? ' ' + doc.author.middleName.charAt(0) + '.' : '')) : '—';
 
-        document.getElementById('docViewTitle').textContent = doc.title || 'Документ';
         document.getElementById('mv_title').value = doc.title || '—';
         document.getElementById('mv_content').value = doc.content || '—';
         document.getElementById('mv_type').value = doc.documentType ? doc.documentType.name : '—';
@@ -452,7 +448,7 @@ async function openDocumentView(id) {
             filesContainer.innerHTML = '<div class="muted">Файлы отсутствуют</div>';
         }
     } catch (e) {
-        alert(e.message);
+        showAlert('Ошибка', e.message);
         closeDocumentView();
         return;
     }
@@ -501,7 +497,7 @@ async function openDocumentView(id) {
                             '<div class="task-actions">' +
                                 '<button class="button button--primary" onclick="openActionModal(' + r.routeId + ', \'' + r.action.code + '\', \'' + mainBtnLabel + '\')">' + mainBtnLabel + '</button>' +
                                 '<button class="button button--secondary" style="color: #b00020; border-color: #b00020;" onclick="openActionModal(' + r.routeId + ', \'REJECT\', \'Отклонить\')">Отклонить</button>' +
-                                '<button class="button button--secondary" onclick="openActionModal(' + r.routeId + ', \'REDIRECT\', \'Перенаправить\', \'' + r.action.code + '\')">Перенаправить</button>' +
+                                '<button class="button button--secondary" onclick="openActionModal(' + r.routeId + ', \'REDIRECT\', \'Перенаправить\')">Перенаправить</button>' +
                             '</div>';
                     }
 
@@ -590,7 +586,7 @@ async function downloadWithToken(event, linkEl) {
         a.click();
         URL.revokeObjectURL(a.href);
         a.remove();
-    } catch (e) { alert(e.message); }
+    } catch (e) { showAlert('Ошибка', e.message); }
 }
 
 function closeDocumentView() {
@@ -635,9 +631,9 @@ async function saveDocChanges() {
             var err = await resp.json().catch(function () { return {}; });
             throw new Error(err.error || 'Ошибка сохранения документа');
         }
-        alert('Документ сохранён');
+        showAlert('Успех', 'Документ сохранён');
         openDocumentView(currentDocId);
-    } catch (e) { alert(e.message); }
+    } catch (e) { showAlert('Ошибка', e.message); }
 }
 
 function addFileVersion() {
@@ -658,16 +654,14 @@ function addFileVersion() {
                 var err = await resp.json().catch(function () { return {}; });
                 throw new Error(err.error || 'Ошибка загрузки файла');
             }
-            alert('Новая версия файла добавлена');
+            showAlert('Успех', 'Новая версия файла добавлена');
             openDocumentView(currentDocId);
-        } catch (e) { alert(e.message); }
+        } catch (e) { showAlert('Ошибка', e.message); }
     };
     input.click();
 }
 
-// ============================================================
 // РЕГИСТРАЦИЯ
-// ============================================================
 async function openRegisterModal() {
     try {
         var resp = await fetch('/api/documents/' + currentDocId + '/preview-reg-number',
@@ -685,7 +679,7 @@ async function openRegisterModal() {
         document.getElementById('registerModalError').style.display = 'none';
         document.getElementById('registerModal').classList.add('open');
     } catch (e) {
-        alert('Не удалось получить номер: ' + e.message);
+        showAlert('Ошибка', 'Не удалось получить номер: ' + e.message);
     }
 }
 
@@ -714,7 +708,7 @@ async function submitRegistration() {
         if (!resp.ok) throw new Error(data.error || 'Ошибка регистрации');
 
         closeRegisterModal();
-        alert('Документ зарегистрирован.\nНомер: ' + data.registrationNumber + '\nДата: ' + data.registrationDate);
+        showAlert('Успех', 'Документ зарегистрирован.\nНомер: ' + data.registrationNumber + '\nДата: ' + data.registrationDate);
         openDocumentView(currentDocId);
     } catch (e) {
         errEl.textContent = e.message;
@@ -724,10 +718,8 @@ async function submitRegistration() {
 
 function registerDocument() { openRegisterModal(); }
 
-// ============================================================
-// ДЕЙСТВИЯ С ЗАДАЧЕЙ (REVIEW и REDIRECT)
-// ============================================================
-async function openActionModal(routeId, actionCode, actionName, originalActionCode) {
+// ДЕЙСТВИЯ С ЗАДАЧЕЙ (REVIEW с множественным выбором)
+async function openActionModal(routeId, actionCode, actionName) {
     if (actionCode === 'REGISTER') { openRegisterModal(); return; }
 
     currentRouteId = routeId;
@@ -749,7 +741,7 @@ async function openActionModal(routeId, actionCode, actionName, originalActionCo
         userGroup.style.display = 'flex';
         userSelect.innerHTML = '<option value="">Загрузка...</option>';
 
-        var permAction = (actionCode === 'REDIRECT') ? (originalActionCode || 'APPROVE') :
+        var permAction = (actionCode === 'REDIRECT') ? 'APPROVE' :
                          (currentDocCategoryCode === 'ADMINISTRATIVE' ? 'EXECUTE' : 'READ');
 
         try {
@@ -758,43 +750,36 @@ async function openActionModal(routeId, actionCode, actionName, originalActionCo
                 headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     actionCode: permAction,
-                    documentId: currentDocId
+                    documentTypeId: currentDocData.documentType ? currentDocData.documentType.documentTypeId : null,
+                    categoryId: currentDocData.category ? currentDocData.category.categoryId : null,
+                    departmentId: currentDocData.department ? currentDocData.department.departmentId : null,
+                    sectorId: currentDocData.sector ? currentDocData.sector.sectorId : null
                 })
             });
             var users = await resp.json();
 
-            if (users.error) {
-                userSelect.innerHTML = '<option value="">Ошибка: ' + users.error + '</option>';
-            } else if (!users.length) {
+            if (!users.length) {
                 userSelect.innerHTML = '<option value="">Нет подходящих сотрудников</option>';
             } else {
                 if (actionCode === 'REVIEW') {
                     userSelect.setAttribute('multiple', 'true');
                     userSelect.style.height = '120px';
-                    // Убрали вывод табельного номера
                     userSelect.innerHTML = users.map(function (u) {
                         return '<option value="' + u.userId + '">' +
                             escapeHtml(u.lastName) + ' ' + escapeHtml(u.firstName) + ' ' +
-                            escapeHtml(u.middleName || '') +
+                            escapeHtml(u.middleName || '') + ' (' + escapeHtml(u.tabNumber) + ')' +
                             '</option>';
                     }).join('');
                 } else {
                     userSelect.removeAttribute('multiple');
                     userSelect.style.height = '';
-                    var filteredUsers = users.filter(u => u.userId !== currentUserId);
-
-                    if (filteredUsers.length === 0) {
-                        userSelect.innerHTML = '<option value="">Нет других подходящих сотрудников</option>';
-                    } else {
-                        // Убрали вывод табельного номера
-                        userSelect.innerHTML = '<option value="">Выберите сотрудника</option>' +
-                            filteredUsers.map(function (u) {
-                                return '<option value="' + u.userId + '">' +
-                                    escapeHtml(u.lastName) + ' ' + escapeHtml(u.firstName) + ' ' +
-                                    escapeHtml(u.middleName || '') +
-                                    '</option>';
-                            }).join('');
-                    }
+                    userSelect.innerHTML = '<option value="">Выберите сотрудника</option>' +
+                        users.map(function (u) {
+                            return '<option value="' + u.userId + '">' +
+                                escapeHtml(u.lastName) + ' ' + escapeHtml(u.firstName) + ' ' +
+                                escapeHtml(u.middleName || '') + ' (' + escapeHtml(u.tabNumber) + ')' +
+                                '</option>';
+                        }).join('');
                 }
             }
         } catch (_) {
@@ -828,7 +813,7 @@ async function submitTaskAction() {
     var deadline = document.getElementById('actionDeadline') ? document.getElementById('actionDeadline').value : null;
 
     if (currentActionCode === 'REJECT' && !comment) {
-        alert('При отклонении задачи необходимо указать причину (комментарий).');
+        showAlert('Внимание', 'При отклонении задачи необходимо указать причину (комментарий).');
         return;
     }
 
@@ -840,18 +825,18 @@ async function submitTaskAction() {
 
     if (currentActionCode === 'REDIRECT') {
         var newAssigneeId = userSelect.value;
-        if (!newAssigneeId) { alert('Выберите сотрудника.'); return; }
+        if (!newAssigneeId) { showAlert('Внимание', 'Выберите сотрудника.'); return; }
         payload.newAssigneeId = newAssigneeId;
     }
     else if (currentActionCode === 'REVIEW') {
         var selectedOptions = Array.from(userSelect.selectedOptions).map(opt => opt.value).filter(v => v);
         if (selectedOptions.length === 0) {
-            alert('Выберите хотя бы одного исполнителя.');
+            showAlert('Внимание', 'Выберите хотя бы одного исполнителя.');
             return;
         }
         payload.executorIds = selectedOptions;
 
-        if (!deadline) { alert('Укажите срок исполнения.'); return; }
+        if (!deadline) { showAlert('Внимание', 'Укажите срок исполнения.'); return; }
         payload.deadline = deadline + ':00';
     }
 
@@ -868,13 +853,13 @@ async function submitTaskAction() {
         closeActionModal();
         openDocumentView(currentDocId);
     } catch (e) {
-        alert(e.message);
+        showAlert('Ошибка', e.message);
     }
 }
 
 function printSection(elementId, title) {
     var el = document.getElementById(elementId);
-    if (!el) { alert('Нечего печатать'); return; }
+    if (!el) { showAlert('Внимание', 'Нечего печатать'); return; }
     var win = window.open('', '_blank');
     win.document.write('<html><head><title>' + title + '</title>');
     win.document.write('<meta charset="UTF-8">');
@@ -909,18 +894,66 @@ function printRoute() {
     printSection('routeTimeline', 'Маршрут документа: ' + (currentDocData ? currentDocData.title : ''));
 }
 
-async function printDiscipline() {
+// ЭКСПОРТ ИСПОЛНИТЕЛЬСКОЙ ДИСЦИПЛИНЫ В PDF (ПЕЧАТЬ)
+function printDiscipline() {
     var el = document.getElementById('dashboardView');
-    if (!el) { alert('Откройте аналитику'); return; }
-    if (typeof html2pdf === 'undefined') {
-        printSection('dashboardView', 'Исполнительская дисциплина');
-        return;
-    }
-    html2pdf().set({
-        margin: 10,
-        filename: 'discipline_' + new Date().toISOString().slice(0, 10) + '.pdf',
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    }).from(el).save();
+    if (!el) { showAlert('Внимание', 'Откройте аналитику'); return; }
+
+    var win = window.open('', '_blank');
+
+    var stylesHtml = '';
+    document.querySelectorAll('link[rel="stylesheet"], style').forEach(s => {
+        stylesHtml += s.outerHTML;
+    });
+
+    win.document.write('<html><head><title>Исполнительская дисциплина</title>');
+    win.document.write('<meta charset="UTF-8">');
+    win.document.write(stylesHtml);
+
+    win.document.write(`
+        <style>
+            @page { size: A4 landscape; margin: 10mm; }
+            body { background: #fff !important; margin: 0; padding: 0; }
+            .app-shell, .topbar, .sidebar, .view-sidebar, .modal-overlay { display: none !important; }
+            .content { padding: 0 !important; margin: 0 !important; }
+            #dashboardView { display: block !important; width: 100% !important; padding: 0 !important; }
+            .dashboard-grid { display: flex !important; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
+            .stat-card { flex: 1; page-break-inside: avoid; box-shadow: none !important; border: 1px solid var(--border-pink, #fbcfe8) !important; }
+            .charts-row { display: flex !important; justify-content: space-between; gap: 20px; width: 100% !important; margin-bottom: 20px; }
+            .chart-container { width: 48% !important; page-break-inside: avoid; box-shadow: none !important; border: 1px solid var(--border-pink, #fbcfe8) !important; }
+            .chart-wrapper { height: 250px !important; position: relative; width: 100%; }
+            canvas { max-width: 100% !important; height: auto !important; }
+            .page-heading button { display: none !important; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+        </style>
+    `);
+
+    win.document.write('</head><body>');
+
+    var clone = el.cloneNode(true);
+
+    var originalCanvases = el.querySelectorAll('canvas');
+    var clonedCanvases = clone.querySelectorAll('canvas');
+    clonedCanvases.forEach(function(canvas, index) {
+        if(originalCanvases[index]) {
+            var img = document.createElement('img');
+            img.src = originalCanvases[index].toDataURL('image/png');
+            img.style.width = '100%';
+            img.style.height = '100%';
+            img.style.objectFit = 'contain';
+            canvas.parentNode.replaceChild(img, canvas);
+        }
+    });
+
+    var btn = clone.querySelector('button');
+    if (btn) btn.remove();
+
+    win.document.write(clone.outerHTML);
+    win.document.write('</body></html>');
+    win.document.close();
+
+    setTimeout(function() {
+        win.focus();
+        win.print();
+    }, 500);
 }

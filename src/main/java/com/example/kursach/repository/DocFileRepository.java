@@ -14,10 +14,8 @@ public interface DocFileRepository extends JpaRepository<DocFile, Long> {
 
     Optional<DocFile> findByDocumentDocumentIdAndVersionNumber(Long documentId, Integer versionNumber);
 
-    // Тот самый метод, который требует IntelliJ IDEA (возвращает список версий по убыванию)
     List<DocFile> findByDocumentDocumentIdOrderByVersionNumberDesc(Long documentId);
 
-    // Оставляем и этот метод для получения последней версии (возвращает Optional)
     Optional<DocFile> findTopByDocumentDocumentIdOrderByVersionNumberDesc(Long documentId);
 
     List<DocFile> findByUploadedByUserId(Long userId);

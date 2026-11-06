@@ -4,9 +4,7 @@ var isAdmin = roleCode === 'ADMIN';
 var currentUserId = parseInt(localStorage.getItem('userId'));
 if (!token) window.location.href = '/login';
 
-// ============================================================
-// СТАТУСЫ ДОКУМЕНТА (по ТЗ, п. 3.14)
-// ============================================================
+// СТАТУСЫ ДОКУМЕНТА
 var STATUS_MAP = {
     'DRAFT':       'Черновик',
     'IN_PROGRESS': 'В процессе',
@@ -18,9 +16,7 @@ var STATUS_MAP = {
     'PENDING':     'Не прочитано'
 };
 
-// ============================================================
-// СТАТУСЫ ЭТАПА МАРШРУТА (по ТЗ, п. 3.14)
-// ============================================================
+// СТАТУСЫ ЭТАПА МАРШРУТА
 var ROUTE_STATUS_MAP = {
     'PENDING':     'Не прочитано',
     'WAITING':     'Ожидает',
@@ -39,7 +35,6 @@ var TASKS = [
     { code: 'EXECUTION',    name: 'На исполнении',   action: 'EXECUTE' }
 ];
 
-// ДИНАМИЧЕСКИЕ КАТЕГОРИИ — заполняются loadCategories() из /api/ref/doc-categories
 var CATEGORIES = [];
 
 var ADMIN_SECTIONS = [
@@ -81,7 +76,6 @@ var currentSection = null;
 var currentData = [];
 var currentRefType = 'departments';
 
-// Контекст управления полномочиями (сохранение / позиции)
 var currentPermissionUserId = null;
 var currentPositionId       = null;
 var currentPermissionMode   = 'users';   // 'users' | 'positions'
@@ -119,10 +113,6 @@ function logout() {
     window.location.href = '/login';
 }
 
-/**
- * Загружает активные категории документов из БД.
- * Заполняет глобальный CATEGORIES (code + name).
- */
 async function loadCategories() {
     try {
         var resp = await fetch('/api/ref/doc-categories', {
@@ -169,3 +159,35 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
     });
 });
+
+function showAlert(title, message) {
+    var titleEl = document.getElementById('alertTitle');
+    var msgEl = document.getElementById('alertMessage');
+    var modal = document.getElementById('alertModal');
+    if (titleEl && msgEl && modal) {
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+        modal.classList.add('open');
+    } else {
+        console.log(title + ': ' + message);
+    }
+}
+
+function showConfirm(title, message, onConfirm) {
+    var titleEl = document.getElementById('confirmTitle');
+    var msgEl = document.getElementById('confirmMessage');
+    var btn = document.getElementById('btnConfirmAction');
+    var modal = document.getElementById('confirmModal');
+
+    if (titleEl && msgEl && btn && modal) {
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+
+        btn.onclick = function() {
+            modal.classList.remove('open');
+            onConfirm();
+        };
+
+        modal.classList.add('open');
+    }
+}

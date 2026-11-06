@@ -63,7 +63,6 @@ public class Document {
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
-    // геттеры/сеттеры — без изменений
     public Long getDocumentId() { return documentId; }
     public void setDocumentId(Long documentId) { this.documentId = documentId; }
     public DocCategory getCategory() { return category; }

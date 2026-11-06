@@ -91,10 +91,7 @@ public class DocumentController {
         this.posPermissionRepository = posPermissionRepository;
     }
 
-    // =====================================================================
     // СПИСКИ И КАРТОЧКА
-    // =====================================================================
-
     @GetMapping("/my")
     @Transactional(readOnly = true)
     public ResponseEntity<?> getMyDocuments(
@@ -191,9 +188,7 @@ public class DocumentController {
         return ResponseEntity.ok(result);
     }
 
-    // =====================================================================
     // ПОИСК ПОДХОДЯЩИХ СОТРУДНИКОВ
-    // =====================================================================
     @PostMapping("/eligible-users")
     @Transactional(readOnly = true)
     public ResponseEntity<?> getEligibleUsers(
@@ -224,9 +219,7 @@ public class DocumentController {
         return ResponseEntity.ok(eligible);
     }
 
-    // =====================================================================
     // ОТМЕТКА ПРОЧТЕНИЯ ЗАДАЧИ
-    // =====================================================================
     @PostMapping("/{id}/mark-read")
     @Transactional
     public ResponseEntity<?> markAsRead(
@@ -270,10 +263,7 @@ public class DocumentController {
         ));
     }
 
-    // =====================================================================
     // СОЗДАНИЕ / РЕДАКТИРОВАНИЕ
-    // =====================================================================
-
     @PostMapping
     @Transactional
     public ResponseEntity<?> createDocument(
@@ -412,10 +402,7 @@ public class DocumentController {
         return ResponseEntity.ok(doc);
     }
 
-    // =====================================================================
     // ФАЙЛЫ
-    // =====================================================================
-
     @PostMapping(value = "/{id}/files", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Transactional
     public ResponseEntity<?> uploadFile(
@@ -511,9 +498,7 @@ public class DocumentController {
                 .body(resource);
     }
 
-    // =====================================================================
     // ПРЕДПРОСМОТР РЕГИСТРАЦИОННОГО НОМЕРА
-    // =====================================================================
     @GetMapping("/{id}/preview-reg-number")
     @Transactional(readOnly = true)
     public ResponseEntity<?> previewRegNumber(
@@ -547,10 +532,7 @@ public class DocumentController {
         return ResponseEntity.ok(result);
     }
 
-    // =====================================================================
     // МАРШРУТ
-    // =====================================================================
-
     @PostMapping("/{id}/route")
     @Transactional
     public ResponseEntity<?> createRoute(
@@ -731,10 +713,7 @@ public class DocumentController {
         return ResponseEntity.ok(Map.of("message", "Маршрут успешно создан"));
     }
 
-    // =====================================================================
     // РЕГИСТРАЦИЯ
-    // =====================================================================
-
     @PostMapping("/{id}/register")
     @Transactional
     public ResponseEntity<?> registerDocument(
@@ -852,10 +831,7 @@ public class DocumentController {
         ));
     }
 
-    // =====================================================================
     // ДЕЙСТВИЯ
-    // =====================================================================
-
     @PostMapping("/{id}/action")
     @Transactional
     public ResponseEntity<?> performAction(
@@ -1086,10 +1062,7 @@ public class DocumentController {
         return ResponseEntity.ok(Map.of("message", "Действие выполнено успешно"));
     }
 
-    // =====================================================================
     // ИСТОРИЯ / МАРШРУТ
-    // =====================================================================
-
     @GetMapping("/{id}/history")
     @Transactional(readOnly = true)
     public ResponseEntity<?> getHistory(
@@ -1118,10 +1091,7 @@ public class DocumentController {
         return ResponseEntity.ok(docRouteRepository.findByDocumentDocumentIdOrderByStepNumberAsc(id));
     }
 
-    // =====================================================================
     // ВСПОМОГАТЕЛЬНЫЕ
-    // =====================================================================
-
     private Long extractUserId(String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             throw new IllegalArgumentException("Нет Bearer-токена");
@@ -1201,7 +1171,6 @@ public class DocumentController {
     }
 
     private boolean hasPermission(User user, String actionCode, Document doc) {
-        // АДМИНИСТРАТОР ИМЕЕТ ПРАВО НА ЛЮБЫЕ ДЕЙСТВИЯ
         if ("ADMIN".equals(user.getBaseRole().getCode())) return true;
 
         String permCode = switch (actionCode) {

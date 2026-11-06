@@ -1,7 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  /* НЕЖНО-РОЗОВАЯ И МОЛОЧНО-БЕЛАЯ ПАЛИТРА */
   --bg-milk: #fdfbfb;         /* Молочно-белый фон */
   --bg-pink-light: #fff0f5;   /* Очень светлый розовый */
   --bg-pink-medium: #ffe4e6;  /* Нежно-розовый для сайдбара и кнопок */
@@ -11,7 +10,6 @@
 
   --border-pink: #fbcfe8;     /* Нежно-розовые рамки */
 
-  /* ЦВЕТА ДЛЯ HOVER И ACTIVE (MAGENTA) */
   --magenta: #d91169;         /* Яркий маджента (фуксия) */
   --magenta-dark: #b30e56;    /* Маджента потемнее для нажатия (active) */
   --text-white: #ffffff;
@@ -34,14 +32,13 @@ body {
 
 h1, h2, h3, h4, p { margin-top: 0; }
 
-/* =========================== КНОПКИ =========================== */
 .button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   height: 38px;
   padding: 0 20px;
-  border-radius: 99px; /* Максимальное скругление (таблетка) */
+  border-radius: 99px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -53,20 +50,17 @@ h1, h2, h3, h4, p { margin-top: 0; }
   color: var(--text-dark);
 }
 
-/* Главная кнопка */
 .button--primary {
   background: var(--bg-pink-medium);
   color: var(--text-dark);
   box-shadow: 0 4px 10px rgba(217, 17, 105, 0.1);
 }
 
-/* Второстепенная кнопка */
 .button--secondary {
   background: var(--bg-milk);
   color: var(--text-dark);
 }
 
-/* Эффект при наведении и нажатии для ВСЕХ кнопок */
 .button:hover,
 .button:active {
   background: var(--magenta) !important;
@@ -81,7 +75,6 @@ h1, h2, h3, h4, p { margin-top: 0; }
   transform: translateY(1px);
 }
 
-/* =========================== СЕТКА И ШАПКА =========================== */
 .app-shell {
   display: grid;
   grid-template-columns: 280px 1fr;
@@ -131,7 +124,7 @@ h1, h2, h3, h4, p { margin-top: 0; }
 .profile-copy strong { font-weight: 700; color: var(--text-dark); }
 .profile-copy span { color: var(--text-muted); font-size: 12px; font-weight: 500; }
 
-/* =========================== САЙДБАР =========================== */
+/* САЙДБАР */
 .sidebar {
   background: var(--bg-pink-medium);
   border-right: 1px solid var(--border-pink);
@@ -174,7 +167,6 @@ h1, h2, h3, h4, p { margin-top: 0; }
   box-shadow: 0 2px 8px rgba(217, 17, 105, 0.15);
 }
 
-/* =========================== КОНТЕНТ =========================== */
 .content { padding: 32px; overflow-y: auto; min-width: 0; }
 .page-heading {
   display: flex; justify-content: space-between; align-items: flex-start;
@@ -191,7 +183,7 @@ h1, h2, h3, h4, p { margin-top: 0; }
   white-space: nowrap;
 }
 
-/* =========================== ТАБЛИЦЫ =========================== */
+/* ТАБЛИЦЫ */
 .table-shell {
   background: var(--bg-milk); border: 1px solid var(--border-pink);
   border-radius: 16px;
@@ -235,7 +227,6 @@ td span {
   border-color: var(--magenta) !important;
 }
 
-/* =========================== АВТОРИЗАЦИЯ =========================== */
 .login-page {
   min-height: 100vh; display: grid; place-items: center;
   background: var(--bg-milk); padding: 20px;
